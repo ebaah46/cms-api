@@ -1,0 +1,5 @@
+first_name,last_name,email,phone,date_of_birth,gender,address,membership_status,membership_date
+John,Smith,john.smith@example.com,555-0101,1985-03-15,male,"123 Main St, City",active,2020-01-01
+Jane,Doe,jane.doe@example.com,555-0102,1990-07-22,female,"456 Oak Ave, Town",active,2021-06-15
+Robert,Johnson,,555-0103,1978-11-08,male,,active,2019-03-20
+Mary,Williams,mary.w@example.com,,2000-05-30,female,"789 Pine Rd",visitor,

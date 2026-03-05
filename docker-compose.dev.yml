@@ -1,0 +1,56 @@
+services:
+  ui:
+    build:
+      context: ../cms-ui
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    environment:
+      - API_URL=http://api:3000
+    volumes:
+      - ../cms-ui:/app
+      - /app/node_modules
+    depends_on:
+      - api
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=
+      - JWT_SECRET=dev-secret-key-not-for-production
+      - JWT_EXPIRATION_HOURS=24
+      - REFRESH_TOKEN_EXPIRATION_DAYS=7
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=3000
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+      - RUST_LOG=cms_api=debug,tower_http=debug
+    volumes:
+      - .:/app
+      - cargo_cache:/usr/local/cargo/registry
+      - target_cache:/app/target
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=cms_api
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data_dev:
+  cargo_cache:
+  target_cache:

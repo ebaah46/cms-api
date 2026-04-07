@@ -7,9 +7,17 @@ use crate::models::member::Member;
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct CreateMemberRequest {
-    #[validate(length(min = 1, max = 100, message = "First name must be between 1 and 100 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 100,
+        message = "First name must be between 1 and 100 characters"
+    ))]
     pub first_name: String,
-    #[validate(length(min = 1, max = 100, message = "Last name must be between 1 and 100 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 100,
+        message = "Last name must be between 1 and 100 characters"
+    ))]
     pub last_name: String,
     #[validate(email(message = "Invalid email format"))]
     pub email: Option<String>,
@@ -29,9 +37,17 @@ pub struct CreateMemberRequest {
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct UpdateMemberRequest {
-    #[validate(length(min = 1, max = 100, message = "First name must be between 1 and 100 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 100,
+        message = "First name must be between 1 and 100 characters"
+    ))]
     pub first_name: Option<String>,
-    #[validate(length(min = 1, max = 100, message = "Last name must be between 1 and 100 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 100,
+        message = "Last name must be between 1 and 100 characters"
+    ))]
     pub last_name: Option<String>,
     #[validate(email(message = "Invalid email format"))]
     pub email: Option<String>,
@@ -57,7 +73,7 @@ pub struct MemberResponse {
     pub email: Option<String>,
     pub phone: Option<String>,
     pub date_of_birth: Option<NaiveDate>,
-    pub gender: Option<String>,
+    pub gender: String,
     pub address: Option<String>,
     pub membership_status: String,
     pub membership_date: Option<NaiveDate>,
@@ -76,9 +92,9 @@ impl From<Member> for MemberResponse {
             email: m.email,
             phone: m.phone,
             date_of_birth: m.date_of_birth,
-            gender: m.gender,
+            gender: m.gender.into(),
             address: m.address,
-            membership_status: m.membership_status,
+            membership_status: m.membership_status.into(),
             membership_date: m.membership_date,
             household_id: m.household_id,
             household_role: m.household_role,

@@ -22,6 +22,8 @@ CREATE TABLE households (
 );
 
 -- Members table
+CREATE TYPE gender AS ENUM ('male', 'female', 'unspecified');
+CREATE TYPE member_status AS ENUM ('active', 'inactive', 'visitor', 'transferred', 'deceased');
 CREATE TABLE members (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     first_name VARCHAR(100) NOT NULL,
@@ -29,12 +31,49 @@ CREATE TABLE members (
     email VARCHAR(255),
     phone VARCHAR(50),
     date_of_birth DATE,
-    gender VARCHAR(20),
+    gender gender,
     address TEXT,
-    membership_status VARCHAR(50) NOT NULL DEFAULT 'active',
+    membership_status member_status NOT NULL DEFAULT 'active',
     membership_date DATE,
     household_id UUID REFERENCES households(id) ON DELETE SET NULL,
     household_role VARCHAR(50),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ
+);
+
+
+-- Enumerations needed for member details
+CREATE TYPE marital_status AS ENUM ('single', 'married', 'divorced', 'widowed', 'separated');
+
+CREATE TYPE education_level AS ENUM ('primary', 'jhs', 'shs', 'tetiary', 'none');
+
+-- Members details
+CREATE TABLE member_details(
+    id UUID DEFAULT gen_random_uuid(),
+    member_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+    place_of_birth VARCHAR(50),
+    region_of_birth VARCHAR(50),
+    education_level education_level,
+    profession VARCHAR(100),
+    occupation VARCHAR(100),
+    marital_status marital_status NOT NULL DEFAULT 'single',
+    spouse_name VARCHAR(100),
+    spouse_date_of_birth DATE,
+    hometown VARCHAR(100),
+    church VARCHAR(100),
+    place_of_marriage VARCHAR(50),
+    marriage_officiating_minister VARCHAR(100),
+    date_of_baptism DATE,
+    place_of_baptism VARCHAR(50),
+    baptism_officiating_minister VARCHAR(100),
+    date_of_confirmation DATE,
+    place_of_confirmation VARCHAR(50),
+    confirmation_officiating_minister VARCHAR(100),
+    confirmation_text VARCHAR(50),
+    house_location VARCHAR(50),
+    house_number VARCHAR(50),
+    gps_address VARCHAR(50)
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMPTZ

@@ -1,10 +1,13 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::dto::member_dto::{CreateMemberRequest, MemberQuery, MemberResponse, UpdateMemberRequest};
 use crate::dto::ListResponse;
+use crate::dto::member_dto::{
+    CreateMemberRequest, MemberDetailResponse, MemberQuery, MemberResponse,
+    UpdateMemberDetailRequest, UpdateMemberRequest,
+};
 use crate::errors::AppError;
-use crate::repositories::member_repo::MemberRepository;
+use crate::repositories::member_repo::{CreateMemberParams, MemberRepository, UpdateMemberParams};
 
 pub struct MemberService;
 
@@ -31,6 +34,10 @@ impl MemberService {
         )
         .await?;
 
+        // create associated member detail
+        let mut member_detail = CreateMemberParams::default();
+        member_detail.member_id = member.id;
+        let _ = MemberRepository::create_detail(pool, member_detail).await?;
         Ok(member.into())
     }
 
@@ -38,6 +45,17 @@ impl MemberService {
         let member = MemberRepository::find_by_id(pool, id)
             .await?
             .ok_or_else(|| AppError::NotFound("Member not found".to_string()))?;
+
+        Ok(member.into())
+    }
+
+    pub async fn find_detail_by_id(
+        pool: &PgPool,
+        id: Uuid,
+    ) -> Result<MemberDetailResponse, AppError> {
+        let member = MemberRepository::find_detail_by_id(pool, id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Member Detail not found".to_string()))?;
 
         Ok(member.into())
     }
@@ -98,6 +116,43 @@ impl MemberService {
         )
         .await?
         .ok_or_else(|| AppError::NotFound("Member not found".to_string()))?;
+
+        Ok(member.into())
+    }
+
+    pub async fn update_detail(
+        pool: &PgPool,
+        id: Uuid,
+        req: UpdateMemberDetailRequest,
+    ) -> Result<MemberDetailResponse, AppError> {
+        let mut update_member_req = UpdateMemberParams::default();
+        update_member_req.communicant = req.communicant;
+        update_member_req.place_of_birth = req.place_of_birth;
+        update_member_req.region_of_birth = req.region_of_birth;
+        update_member_req.profession = req.profession;
+        update_member_req.occupation = req.occupation;
+        update_member_req.education_level = req.education_level;
+        update_member_req.marital_status = req.marital_status;
+        update_member_req.spouse_name = req.spouse_name;
+        update_member_req.spouse_date_of_birth = req.spouse_date_of_birth;
+        update_member_req.hometown = req.hometown;
+        update_member_req.place_of_marriage = req.place_of_marriage;
+        update_member_req.marriage_officiating_minister = req.marriage_officiating_minister;
+        update_member_req.photo_url = req.photo_url;
+        update_member_req.house_number = req.house_number;
+        update_member_req.house_location = req.house_location;
+        update_member_req.gps_address = req.gps_address;
+        update_member_req.church = req.church;
+        update_member_req.date_of_baptism = req.date_of_baptism;
+        update_member_req.place_of_baptism = req.place_of_baptism;
+        update_member_req.baptism_officiating_minister = req.baptism_officiating_minister;
+        update_member_req.date_of_confirmation = req.date_of_confirmation;
+        update_member_req.date_of_confirmation = req.date_of_confirmation;
+        update_member_req.confirmation_officiating_minister = req.confirmation_officiating_minister;
+        update_member_req.confirmation_text = req.confirmation_text;
+        let member = MemberRepository::update_detail(pool, id, update_member_req)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Member Detail not found".to_string()))?;
 
         Ok(member.into())
     }

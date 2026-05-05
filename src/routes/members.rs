@@ -11,7 +11,8 @@ use crate::AppState;
 use crate::dto::attendance_dto::AttendanceResponse;
 use crate::dto::group_dto::GroupResponse;
 use crate::dto::member_dto::{
-    CreateMemberRequest, ImportResult, MemberQuery, MemberResponse, UpdateMemberRequest,
+    CreateMemberRequest, ImportResult, MemberDetailResponse, MemberQuery, MemberResponse,
+    UpdateMemberDetailRequest, UpdateMemberRequest,
 };
 use crate::dto::{ListResponse, PaginationParams};
 use crate::errors::AppError;
@@ -30,6 +31,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/:id",
             get(get_member).patch(update_member).delete(delete_member),
+        )
+        .route(
+            "/:id/detail",
+            get(get_member_detail).patch(update_member_detail),
         )
         .route("/:id/attendance", get(get_member_attendance))
         .route("/:id/groups", get(get_member_groups))
@@ -63,6 +68,15 @@ async fn get_member(
     Ok(Json(member))
 }
 
+async fn get_member_detail(
+    State(state): State<AppState>,
+    _user: RequireStaff,
+    Path(id): Path<Uuid>,
+) -> Result<Json<MemberDetailResponse>, AppError> {
+    let member = MemberService::find_detail_by_id(&state.db, id).await?;
+    Ok(Json(member))
+}
+
 async fn update_member(
     State(state): State<AppState>,
     _admin: RequireAdmin,
@@ -71,6 +85,17 @@ async fn update_member(
 ) -> Result<Json<MemberResponse>, AppError> {
     body.validate()?;
     let member = MemberService::update(&state.db, id, body).await?;
+    Ok(Json(member))
+}
+
+async fn update_member_detail(
+    State(state): State<AppState>,
+    _admin: RequireAdmin,
+    Path(id): Path<Uuid>,
+    AppJson(body): AppJson<UpdateMemberDetailRequest>,
+) -> Result<Json<MemberDetailResponse>, AppError> {
+    body.validate()?;
+    let member = MemberService::update_detail(&state.db, id, body).await?;
     Ok(Json(member))
 }
 

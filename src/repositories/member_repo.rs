@@ -1,8 +1,10 @@
 use chrono::NaiveDate;
 use sqlx::PgPool;
+use tower::builder;
 use uuid::Uuid;
+use validator::ValidateRequired;
 
-use crate::models::member::Member;
+use crate::models::member::{Member, MemberDetail};
 
 pub struct MemberRepository;
 
@@ -28,7 +30,7 @@ impl MemberRepository {
                 gender, address, membership_status, membership_date,
                 household_id, household_role
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, CAST($6 AS gender), $7, CAST($8 AS member_status), $9, $10, $11)
             RETURNING *
             "#,
         )
@@ -37,7 +39,7 @@ impl MemberRepository {
         .bind(email)
         .bind(phone)
         .bind(date_of_birth)
-        .bind(gender)
+        .bind(if gender.is_none() {Some("unspecified")} else {gender})
         .bind(address)
         .bind(membership_status)
         .bind(membership_date)
@@ -47,11 +49,49 @@ impl MemberRepository {
         .await
     }
 
+    pub async fn create_detail(
+        pool: &PgPool,
+        params: CreateMemberParams,
+    ) -> Result<MemberDetail, sqlx::Error> {
+        sqlx::query_as::<_, MemberDetail>(
+            r#"
+            INSERT INTO member_details (
+                member_id, communicant, place_of_birth, region_of_birth, education_level, profession,
+                occupation, marital_status, spouse_name, spouse_date_of_birth, hometown, church, place_of_marriage,
+                marriage_officiating_minister, date_of_baptism, place_of_baptism, baptism_officiating_minister,
+                date_of_confirmation, place_of_confirmation, confirmation_officiating_minister, confirmation_text,
+                photo_url, house_location, house_number, gps_address
+            )
+            VALUES ($1, $2, $3, $4, CAST($5 AS education_level), $6, $7, CAST($8 AS marital_status), $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+            RETURNING *
+            "#,
+        ).bind(params.member_id).bind(params.communicant).bind(params.place_of_birth).bind(params.region_of_birth).bind(if params.education_level.is_some() {params.education_level} else { Some("none".into())}).bind(params.profession).bind(params.occupation)
+        .bind(if params.marital_status.is_some() {params.marital_status} else {Some("single".into())})
+        .bind(params.spouse_name).bind(params.spouse_date_of_birth).bind(params.hometown).bind(params.church).bind(params.place_of_marriage).bind(params.marriage_officiating_minister)
+        .bind(params.date_of_baptism).bind(params.place_of_baptism).bind(params.baptism_officiating_minister).bind(params.date_of_confirmation).bind(params.place_of_confirmation)
+        .bind(params.confirmation_officiating_minister).bind(params.confirmation_text).bind(params.photo_url).bind(params.house_location).bind(params.house_number)
+        .bind(params.gps_address)
+        .fetch_one(pool)
+        .await
+    }
+
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Member>, sqlx::Error> {
         sqlx::query_as::<_, Member>("SELECT * FROM members WHERE id = $1 AND deleted_at IS NULL")
             .bind(id)
             .fetch_optional(pool)
             .await
+    }
+
+    pub async fn find_detail_by_id(
+        pool: &PgPool,
+        id: Uuid,
+    ) -> Result<Option<MemberDetail>, sqlx::Error> {
+        sqlx::query_as::<_, MemberDetail>(
+            "SELECT * FROM member_details WHERE member_id = $1 AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await
     }
 
     pub async fn find_all(
@@ -183,9 +223,9 @@ impl MemberRepository {
                 email = COALESCE($4, email),
                 phone = COALESCE($5, phone),
                 date_of_birth = COALESCE($6, date_of_birth),
-                gender = COALESCE($7, gender),
+                gender = COALESCE(CAST($7 AS gender), gender),
                 address = COALESCE($8, address),
-                membership_status = COALESCE($9, membership_status),
+                membership_status = COALESCE(CAST($9 AS member_status), membership_status),
                 membership_date = COALESCE($10, membership_date),
                 household_id = COALESCE($11, household_id),
                 household_role = COALESCE($12, household_role),
@@ -206,6 +246,73 @@ impl MemberRepository {
         .bind(membership_date)
         .bind(household_id)
         .bind(household_role)
+        .fetch_optional(pool)
+        .await
+    }
+
+    pub async fn update_detail(
+        pool: &PgPool,
+        id: Uuid,
+        params: UpdateMemberParams,
+    ) -> Result<Option<MemberDetail>, sqlx::Error> {
+        sqlx::query_as::<_, MemberDetail>(
+            r#"
+            UPDATE member_details
+            SET
+                communicant = COALESCE($2, communicant),
+                place_of_birth = COALESCE($3, place_of_birth),
+                region_of_birth = COALESCE($4, region_of_birth),
+                education_level = COALESCE($5, education_level),
+                profession = COALESCE($6, profession),
+                occupation = COALESCE($7, occupation),
+                marital_status = COALESCE($8, marital_status),
+                spouse_name = COALESCE($9, spouse_name),
+                spouse_date_of_birth = COALESCE($10, spouse_date_of_birth),
+                hometown = COALESCE($11, hometown),
+                church = COALESCE($12, church),
+                place_of_marriage = COALESCE($13, place_of_marriage),
+                marriage_officiating_minister = COALESCE($14, marriage_officiating_minister),
+                date_of_baptism = COALESCE($15, date_of_baptism),
+                place_of_baptism = COALESCE($16, place_of_baptism),
+                baptism_officiating_minister = COALESCE($17, baptism_officiating_minister),
+                date_of_confirmation = COALESCE($18, date_of_confirmation),
+                place_of_confirmation = COALESCE($19, place_of_confirmation),
+                confirmation_officiating_minister = COALESCE($20, confirmation_officiating_minister),
+                confirmation_text = COALESCE($21, confirmation_text),
+                photo_url = COALESCE($22, photo_url),
+                house_location = COALESCE($23, house_location),
+                house_number = COALESCE($24, house_number),
+                gps_address = COALESCE($25, gps_address),
+                updated_at = NOW()
+            WHERE member_id = $1 AND deleted_at IS NULL
+            RETURNING *
+            "#,
+        )
+        .bind(id)
+        .bind(params.communicant)
+        .bind(params.place_of_birth)
+        .bind(params.region_of_birth)
+        .bind(params.education_level)
+        .bind(params.profession)
+        .bind(params.occupation)
+        .bind(params.marital_status)
+        .bind(params.spouse_name)
+        .bind(params.spouse_date_of_birth)
+        .bind(params.hometown)
+        .bind(params.church)
+        .bind(params.place_of_marriage)
+        .bind(params.marriage_officiating_minister)
+        .bind(params.date_of_baptism)
+        .bind(params.place_of_baptism)
+        .bind(params.baptism_officiating_minister)
+        .bind(params.date_of_confirmation)
+        .bind(params.place_of_confirmation)
+        .bind(params.confirmation_officiating_minister)
+        .bind(params.confirmation_text)
+        .bind(params.photo_url)
+        .bind(params.house_location)
+        .bind(params.house_number)
+        .bind(params.gps_address)
         .fetch_optional(pool)
         .await
     }
@@ -233,11 +340,78 @@ impl MemberRepository {
 
     pub async fn soft_delete(pool: &PgPool, id: Uuid) -> Result<bool, sqlx::Error> {
         let result = sqlx::query(
-            "UPDATE members SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+            r#"
+            WITH updated_member AS (
+                UPDATE members SET deleted_at = NOW(), updated_at = NOW()
+                WHERE id = $1 AND deleted_at IS NULL
+                RETURNING id
+            )
+            UPDATE member_details
+            SET deleted_at = NOW(), updated_at = NOW()
+            FROM updated_member
+            WHERE member_details.member_id = updated_member.id;
+            "#,
         )
         .bind(id)
         .execute(pool)
         .await?;
         Ok(result.rows_affected() > 0)
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CreateMemberParams {
+    pub member_id: Uuid,
+    pub communicant: bool,
+    pub place_of_birth: Option<String>,
+    pub region_of_birth: Option<String>,
+    pub education_level: Option<String>,
+    pub profession: Option<String>,
+    pub occupation: Option<String>,
+    pub marital_status: Option<String>,
+    pub spouse_name: Option<String>,
+    pub spouse_date_of_birth: Option<NaiveDate>,
+    pub hometown: Option<String>,
+    pub church: Option<String>,
+    pub place_of_marriage: Option<String>,
+    pub marriage_officiating_minister: Option<String>,
+    pub date_of_baptism: Option<NaiveDate>,
+    pub place_of_baptism: Option<String>,
+    pub baptism_officiating_minister: Option<String>,
+    pub date_of_confirmation: Option<NaiveDate>,
+    pub place_of_confirmation: Option<String>,
+    pub confirmation_officiating_minister: Option<String>,
+    pub confirmation_text: Option<String>,
+    pub photo_url: Option<String>,
+    pub house_location: Option<String>,
+    pub house_number: Option<String>,
+    pub gps_address: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateMemberParams {
+    pub communicant: bool,
+    pub place_of_birth: Option<String>,
+    pub region_of_birth: Option<String>,
+    pub education_level: Option<String>,
+    pub profession: Option<String>,
+    pub occupation: Option<String>,
+    pub marital_status: Option<String>,
+    pub spouse_name: Option<String>,
+    pub spouse_date_of_birth: Option<NaiveDate>,
+    pub hometown: Option<String>,
+    pub church: Option<String>,
+    pub place_of_marriage: Option<String>,
+    pub marriage_officiating_minister: Option<String>,
+    pub date_of_baptism: Option<NaiveDate>,
+    pub place_of_baptism: Option<String>,
+    pub baptism_officiating_minister: Option<String>,
+    pub date_of_confirmation: Option<NaiveDate>,
+    pub place_of_confirmation: Option<String>,
+    pub confirmation_officiating_minister: Option<String>,
+    pub confirmation_text: Option<String>,
+    pub photo_url: Option<String>,
+    pub house_location: Option<String>,
+    pub house_number: Option<String>,
+    pub gps_address: Option<String>,
 }

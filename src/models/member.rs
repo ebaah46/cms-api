@@ -92,9 +92,11 @@ impl Member {
     }
 }
 
+#[derive(Debug, Clone, FromRow)]
 pub struct MemberDetail {
     pub id: Uuid,
     pub member_id: Uuid,
+    pub communicant: bool,
     pub place_of_birth: Option<String>,
     pub region_of_birth: Option<String>,
     pub education_level: Option<EducationLevel>,
@@ -102,27 +104,32 @@ pub struct MemberDetail {
     pub occupation: Option<String>,
     pub marital_status: Option<MaritalStatus>,
     pub spouse_name: Option<String>,
-    pub spouse_date_of_birth: Option<DateTime<Utc>>,
+    pub spouse_date_of_birth: Option<NaiveDate>,
     pub hometown: Option<String>,
     pub church: Option<String>,
     pub place_of_marriage: Option<String>,
     pub marriage_officiating_minister: Option<String>,
-    pub date_of_baptism: Option<DateTime<Utc>>,
+    pub date_of_baptism: Option<NaiveDate>,
     pub place_of_baptism: Option<String>,
     pub baptism_officiating_minister: Option<String>,
-    // date_of_confirmation DATE,
-    // place_of_confirmation VARCHAR(50),
-    // confirmation_officiating_minister VARCHAR(100),
-    // confirmation_text VARCHAR(50),
-    // house_location VARCHAR(50),
-    // house_number VARCHAR(50),
-    // gps_address VARCHAR(50)
-    // created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    // updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    // deleted_at TIMESTAMPTZ
+    pub date_of_confirmation: Option<NaiveDate>,
+    pub place_of_confirmation: Option<String>,
+    pub confirmation_officiating_minister: Option<String>,
+    pub confirmation_text: Option<String>,
+    pub photo_url: Option<String>,
+    pub house_location: Option<String>,
+    pub house_number: Option<String>,
+    pub gps_address: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
-impl MemberDetail {}
+impl MemberDetail {
+    pub fn is_deleted(&self) -> bool {
+        self.deleted_at.is_some()
+    }
+}
 
 #[derive(sqlx::Type, Default, Debug, Clone)]
 #[sqlx(type_name = "education_level", rename_all = "lowercase")]

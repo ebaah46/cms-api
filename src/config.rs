@@ -19,7 +19,6 @@ impl Config {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
-
         Ok(Config {
             database_url: env::var("DATABASE_URL")?,
             jwt_secret: env::var("JWT_SECRET")?,

@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
@@ -14,11 +15,50 @@ pub struct AttendanceWithMemberRow {
     pub checked_in_by: Option<Uuid>,
 }
 
-pub struct AttendanceRepository;
+#[async_trait]
+pub trait AttendanceRepository {
+    async fn check_in(
+        &self,
+        member_id: Uuid,
+        service_id: Uuid,
+        checked_in_by: Option<Uuid>,
+    ) -> Result<Attendance, sqlx::Error>;
 
-impl AttendanceRepository {
-    pub async fn check_in(
-        pool: &PgPool,
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Attendance>, sqlx::Error>;
+
+    async fn find_by_member_and_service(
+        &self,
+        member_id: Uuid,
+        service_id: Uuid,
+    ) -> Result<Option<Attendance>, sqlx::Error>;
+
+    async fn get_service_attendance(
+        &self,
+        service_id: Uuid,
+        limit: i32,
+        offset: i32,
+    ) -> Result<Vec<AttendanceWithMemberRow>, sqlx::Error>;
+
+    async fn count_service_attendance(&self, service_id: Uuid) -> Result<i64, sqlx::Error>;
+
+    async fn get_member_attendance(
+        &self,
+        member_id: Uuid,
+        limit: i32,
+        offset: i32,
+    ) -> Result<Vec<Attendance>, sqlx::Error>;
+
+    async fn delete(&self, id: Uuid) -> Result<bool, sqlx::Error>;
+}
+
+pub struct PostgresAttendanceRepository {
+    pool: PgPool,
+}
+
+#[async_trait]
+impl AttendanceRepository for PostgresAttendanceRepository {
+    async fn check_in(
+        &self,
         member_id: Uuid,
         service_id: Uuid,
         checked_in_by: Option<Uuid>,
@@ -33,19 +73,19 @@ impl AttendanceRepository {
         .bind(member_id)
         .bind(service_id)
         .bind(checked_in_by)
-        .fetch_one(pool)
+        .fetch_one(&self.pool)
         .await
     }
 
-    pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Attendance>, sqlx::Error> {
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Attendance>, sqlx::Error> {
         sqlx::query_as::<_, Attendance>("SELECT * FROM attendance WHERE id = $1")
             .bind(id)
-            .fetch_optional(pool)
+            .fetch_optional(&self.pool)
             .await
     }
 
-    pub async fn find_by_member_and_service(
-        pool: &PgPool,
+    async fn find_by_member_and_service(
+        &self,
         member_id: Uuid,
         service_id: Uuid,
     ) -> Result<Option<Attendance>, sqlx::Error> {
@@ -54,12 +94,12 @@ impl AttendanceRepository {
         )
         .bind(member_id)
         .bind(service_id)
-        .fetch_optional(pool)
+        .fetch_optional(&self.pool)
         .await
     }
 
-    pub async fn get_service_attendance(
-        pool: &PgPool,
+    async fn get_service_attendance(
+        &self,
         service_id: Uuid,
         limit: i32,
         offset: i32,
@@ -78,24 +118,21 @@ impl AttendanceRepository {
         .bind(service_id)
         .bind(limit)
         .bind(offset)
-        .fetch_all(pool)
+        .fetch_all(&self.pool)
         .await
     }
 
-    pub async fn count_service_attendance(
-        pool: &PgPool,
-        service_id: Uuid,
-    ) -> Result<i64, sqlx::Error> {
+    async fn count_service_attendance(&self, service_id: Uuid) -> Result<i64, sqlx::Error> {
         let result: (i64,) =
             sqlx::query_as("SELECT COUNT(*) FROM attendance WHERE service_id = $1")
                 .bind(service_id)
-                .fetch_one(pool)
+                .fetch_one(&self.pool)
                 .await?;
         Ok(result.0)
     }
 
-    pub async fn get_member_attendance(
-        pool: &PgPool,
+    async fn get_member_attendance(
+        &self,
         member_id: Uuid,
         limit: i32,
         offset: i32,
@@ -111,14 +148,14 @@ impl AttendanceRepository {
         .bind(member_id)
         .bind(limit)
         .bind(offset)
-        .fetch_all(pool)
+        .fetch_all(&self.pool)
         .await
     }
 
-    pub async fn delete(pool: &PgPool, id: Uuid) -> Result<bool, sqlx::Error> {
+    async fn delete(&self, id: Uuid) -> Result<bool, sqlx::Error> {
         let result = sqlx::query("DELETE FROM attendance WHERE id = $1")
             .bind(id)
-            .execute(pool)
+            .execute(&self.pool)
             .await?;
         Ok(result.rows_affected() > 0)
     }
@@ -160,11 +197,10 @@ impl RefreshTokenRepository {
     }
 
     pub async fn revoke(pool: &PgPool, id: Uuid) -> Result<bool, sqlx::Error> {
-        let result =
-            sqlx::query("UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1")
-                .bind(id)
-                .execute(pool)
-                .await?;
+        let result = sqlx::query("UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1")
+            .bind(id)
+            .execute(pool)
+            .await?;
         Ok(result.rows_affected() > 0)
     }
 

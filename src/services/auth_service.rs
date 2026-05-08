@@ -1,20 +1,20 @@
+use std::sync::Arc;
+
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
 use chrono::{Duration, Utc};
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::config::Config;
 use crate::dto::auth_dto::{LoginResponse, RefreshResponse};
 use crate::errors::AppError;
 use crate::models::user::User;
-use crate::repositories::attendance_repo::RefreshTokenRepository;
-use crate::repositories::user_repo::UserRepository;
+use crate::repositories::{RefreshTokenRepository, UserRepository};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
@@ -25,9 +25,22 @@ pub struct Claims {
     pub iat: i64,
 }
 
-pub struct AuthService;
+pub struct AuthService {
+    user_repo: Arc<dyn UserRepository>,
+    refresh_repo: Arc<dyn RefreshTokenRepository>,
+}
 
 impl AuthService {
+    pub fn new(
+        user_repo: Arc<dyn UserRepository>,
+        refresh_repo: Arc<dyn RefreshTokenRepository>,
+    ) -> Self {
+        Self {
+            user_repo,
+            refresh_repo,
+        }
+    }
+
     pub fn hash_password(password: &str) -> Result<String, AppError> {
         let salt = SaltString::generate(&mut OsRng);
         let argon2 = Argon2::default();
@@ -82,12 +95,14 @@ impl AuthService {
     }
 
     pub async fn login(
-        pool: &PgPool,
+        &self,
         config: &Config,
         email: &str,
         password: &str,
     ) -> Result<LoginResponse, AppError> {
-        let user = UserRepository::find_by_email(pool, email)
+        let user = self
+            .user_repo
+            .find_by_email(email)
             .await?
             .ok_or(AppError::Unauthorized)?;
 
@@ -100,7 +115,9 @@ impl AuthService {
         let refresh_token_hash = Self::hash_token(&refresh_token);
 
         let expires_at = Utc::now() + Duration::days(config.refresh_token_expiration_days);
-        RefreshTokenRepository::create(pool, user.id, &refresh_token_hash, expires_at).await?;
+        self.refresh_repo
+            .create(user.id, &refresh_token_hash, expires_at)
+            .await?;
 
         Ok(LoginResponse {
             access_token,
@@ -111,22 +128,26 @@ impl AuthService {
     }
 
     pub async fn refresh(
-        pool: &PgPool,
+        &self,
         config: &Config,
         refresh_token: &str,
     ) -> Result<RefreshResponse, AppError> {
         let token_hash = Self::hash_token(refresh_token);
 
-        let stored_token = RefreshTokenRepository::find_by_hash(pool, &token_hash)
+        let stored_token = self
+            .refresh_repo
+            .find_by_hash(&token_hash)
             .await?
             .ok_or(AppError::Unauthorized)?;
 
         if stored_token.expires_at < Utc::now() {
-            RefreshTokenRepository::revoke(pool, stored_token.id).await?;
+            self.refresh_repo.revoke(stored_token.id).await?;
             return Err(AppError::Unauthorized);
         }
 
-        let user = UserRepository::find_by_id(pool, stored_token.user_id)
+        let user = self
+            .user_repo
+            .find_by_id(stored_token.user_id)
             .await?
             .ok_or(AppError::Unauthorized)?;
 
@@ -139,18 +160,18 @@ impl AuthService {
         })
     }
 
-    pub async fn logout(pool: &PgPool, refresh_token: &str) -> Result<(), AppError> {
+    pub async fn logout(&self, refresh_token: &str) -> Result<(), AppError> {
         let token_hash = Self::hash_token(refresh_token);
 
-        if let Some(stored_token) = RefreshTokenRepository::find_by_hash(pool, &token_hash).await? {
-            RefreshTokenRepository::revoke(pool, stored_token.id).await?;
+        if let Some(stored_token) = self.refresh_repo.find_by_hash(&token_hash).await? {
+            self.refresh_repo.revoke(stored_token.id).await?;
         }
 
         Ok(())
     }
 
-    pub async fn logout_all(pool: &PgPool, user_id: Uuid) -> Result<u64, AppError> {
-        let count = RefreshTokenRepository::revoke_all_for_user(pool, user_id).await?;
+    pub async fn logout_all(&self, user_id: Uuid) -> Result<u64, AppError> {
+        let count = self.refresh_repo.revoke_all_for_user(user_id).await?;
         Ok(count)
     }
 }

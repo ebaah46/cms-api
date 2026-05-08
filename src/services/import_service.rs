@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use chrono::NaiveDate;
 use csv::ReaderBuilder;
 use serde::Deserialize;
@@ -5,7 +7,7 @@ use sqlx::PgPool;
 
 use crate::dto::member_dto::ImportResult;
 use crate::errors::AppError;
-use crate::repositories::member_repo::MemberRepository;
+use crate::repositories::MemberRepository;
 
 #[derive(Debug, Deserialize)]
 struct CsvMemberRow {
@@ -20,13 +22,16 @@ struct CsvMemberRow {
     membership_date: Option<String>,
 }
 
-pub struct ImportService;
+pub struct ImportService {
+    member_repo: Arc<dyn MemberRepository>,
+}
 
 impl ImportService {
-    pub async fn import_members_from_csv(
-        pool: &PgPool,
-        csv_data: &[u8],
-    ) -> Result<ImportResult, AppError> {
+    pub fn new(member_repo: Arc<dyn MemberRepository>) -> Self {
+        Self { member_repo }
+    }
+
+    pub async fn import_members_from_csv(&self, csv_data: &[u8]) -> Result<ImportResult, AppError> {
         let mut reader = ReaderBuilder::new()
             .has_headers(true)
             .flexible(true)
@@ -73,21 +78,22 @@ impl ImportService {
                 .unwrap_or("active");
 
             // Create member
-            match MemberRepository::create(
-                pool,
-                row.first_name.trim(),
-                row.last_name.trim(),
-                row.email.as_deref().filter(|s| !s.is_empty()),
-                row.phone.as_deref().filter(|s| !s.is_empty()),
-                date_of_birth,
-                row.gender.as_deref().filter(|s| !s.is_empty()),
-                row.address.as_deref().filter(|s| !s.is_empty()),
-                membership_status,
-                membership_date,
-                None, // household_id
-                None, // household_role
-            )
-            .await
+            match self
+                .member_repo
+                .create(
+                    row.first_name.trim(),
+                    row.last_name.trim(),
+                    row.email.as_deref().filter(|s| !s.is_empty()),
+                    row.phone.as_deref().filter(|s| !s.is_empty()),
+                    date_of_birth,
+                    row.gender.as_deref().filter(|s| !s.is_empty()),
+                    row.address.as_deref().filter(|s| !s.is_empty()),
+                    membership_status,
+                    membership_date,
+                    None, // household_id
+                    None, // household_role
+                )
+                .await
             {
                 Ok(_) => imported += 1,
                 Err(e) => {

@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
 
-use crate::models::attendance::{Attendance, RefreshToken};
+use crate::models::attendance::Attendance;
 
 #[derive(Debug, FromRow)]
 pub struct AttendanceWithMemberRow {
@@ -158,66 +158,5 @@ impl AttendanceRepository for PostgresAttendanceRepository {
             .execute(&self.pool)
             .await?;
         Ok(result.rows_affected() > 0)
-    }
-}
-
-pub struct RefreshTokenRepository;
-
-impl RefreshTokenRepository {
-    pub async fn create(
-        pool: &PgPool,
-        user_id: Uuid,
-        token_hash: &str,
-        expires_at: DateTime<Utc>,
-    ) -> Result<RefreshToken, sqlx::Error> {
-        sqlx::query_as::<_, RefreshToken>(
-            r#"
-            INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-            VALUES ($1, $2, $3)
-            RETURNING *
-            "#,
-        )
-        .bind(user_id)
-        .bind(token_hash)
-        .bind(expires_at)
-        .fetch_one(pool)
-        .await
-    }
-
-    pub async fn find_by_hash(
-        pool: &PgPool,
-        token_hash: &str,
-    ) -> Result<Option<RefreshToken>, sqlx::Error> {
-        sqlx::query_as::<_, RefreshToken>(
-            "SELECT * FROM refresh_tokens WHERE token_hash = $1 AND revoked_at IS NULL",
-        )
-        .bind(token_hash)
-        .fetch_optional(pool)
-        .await
-    }
-
-    pub async fn revoke(pool: &PgPool, id: Uuid) -> Result<bool, sqlx::Error> {
-        let result = sqlx::query("UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1")
-            .bind(id)
-            .execute(pool)
-            .await?;
-        Ok(result.rows_affected() > 0)
-    }
-
-    pub async fn revoke_all_for_user(pool: &PgPool, user_id: Uuid) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query(
-            "UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL",
-        )
-        .bind(user_id)
-        .execute(pool)
-        .await?;
-        Ok(result.rows_affected())
-    }
-
-    pub async fn delete_expired(pool: &PgPool) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query("DELETE FROM refresh_tokens WHERE expires_at < NOW()")
-            .execute(pool)
-            .await?;
-        Ok(result.rows_affected())
     }
 }

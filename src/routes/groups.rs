@@ -1,23 +1,21 @@
 use axum::{
-    debug_handler,
+    Json, Router, debug_handler,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
-    Json, Router,
 };
 use uuid::Uuid;
 use validator::Validate;
 
+use crate::AppState;
+use crate::dto::ListResponse;
 use crate::dto::group_dto::{
     AddMemberToGroupRequest, CreateGroupRequest, GroupMemberResponse, GroupQuery, GroupResponse,
     UpdateGroupRequest,
 };
-use crate::dto::ListResponse;
 use crate::errors::AppError;
 use crate::extractors::AppJson;
 use crate::middleware::auth::{RequireAdmin, RequireStaff};
-use crate::services::group_service::GroupService;
-use crate::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -39,7 +37,7 @@ async fn list_groups(
     _user: RequireStaff,
     Query(query): Query<GroupQuery>,
 ) -> Result<Json<ListResponse<GroupResponse>>, AppError> {
-    let groups = GroupService::find_all(&state.db, query).await?;
+    let groups = state.group_service.find_all(query).await?;
     Ok(Json(groups))
 }
 
@@ -50,7 +48,7 @@ async fn create_group(
     AppJson(body): AppJson<CreateGroupRequest>,
 ) -> Result<(StatusCode, Json<GroupResponse>), AppError> {
     body.validate()?;
-    let group = GroupService::create(&state.db, body).await?;
+    let group = state.group_service.create(body).await?;
     Ok((StatusCode::CREATED, Json(group)))
 }
 
@@ -60,7 +58,7 @@ async fn get_group(
     _user: RequireStaff,
     Path(id): Path<Uuid>,
 ) -> Result<Json<GroupResponse>, AppError> {
-    let group = GroupService::find_by_id(&state.db, id).await?;
+    let group = state.group_service.find_by_id(id).await?;
     Ok(Json(group))
 }
 
@@ -72,7 +70,7 @@ async fn update_group(
     AppJson(body): AppJson<UpdateGroupRequest>,
 ) -> Result<Json<GroupResponse>, AppError> {
     body.validate()?;
-    let group = GroupService::update(&state.db, id, body).await?;
+    let group = state.group_service.update(id, body).await?;
     Ok(Json(group))
 }
 
@@ -82,7 +80,7 @@ async fn delete_group(
     _admin: RequireAdmin,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    GroupService::delete(&state.db, id).await?;
+    state.group_service.delete(id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -92,7 +90,7 @@ async fn get_group_members(
     _user: RequireStaff,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<GroupMemberResponse>>, AppError> {
-    let members = GroupService::get_members(&state.db, id).await?;
+    let members = state.group_service.get_members(id).await?;
     Ok(Json(members))
 }
 
@@ -104,7 +102,10 @@ async fn add_member_to_group(
     AppJson(body): AppJson<AddMemberToGroupRequest>,
 ) -> Result<StatusCode, AppError> {
     body.validate()?;
-    GroupService::add_member(&state.db, id, member_id, body.role.as_deref()).await?;
+    state
+        .group_service
+        .add_member(id, member_id, body.role.as_deref())
+        .await?;
     Ok(StatusCode::CREATED)
 }
 
@@ -114,6 +115,6 @@ async fn remove_member_from_group(
     _admin: RequireAdmin,
     Path((id, member_id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode, AppError> {
-    GroupService::remove_member(&state.db, id, member_id).await?;
+    state.group_service.remove_member(id, member_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }

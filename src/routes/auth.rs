@@ -1,24 +1,24 @@
+use axum::body::Body;
+use axum::http::Request;
 use axum::{
+    Json, Router,
     extract::State,
     http::StatusCode,
     middleware::{self, Next},
     response::Response,
     routing::post,
-    Json, Router,
 };
-use axum::http::Request;
-use axum::body::Body;
 use validator::Validate;
 
+use crate::AppState;
 use crate::dto::auth_dto::{
     LoginRequest, LoginResponse, RefreshRequest, RefreshResponse, SetupRequest, SetupResponse,
 };
 use crate::errors::AppError;
 use crate::extractors::AppJson;
-use crate::middleware::rate_limit::{create_auth_rate_limiter, rate_limit_exceeded, SharedRateLimiter};
-use crate::services::auth_service::AuthService;
-use crate::services::user_service::UserService;
-use crate::AppState;
+use crate::middleware::rate_limit::{
+    SharedRateLimiter, create_auth_rate_limiter, rate_limit_exceeded,
+};
 
 pub fn router() -> Router<AppState> {
     // Create rate limiter: 10 login attempts per minute
@@ -52,7 +52,10 @@ async fn login(
 ) -> Result<Json<LoginResponse>, AppError> {
     body.validate()?;
 
-    let response = AuthService::login(&state.db, &state.config, &body.email, &body.password).await?;
+    let response = state
+        .auth_service
+        .login(&state.config, &body.email, &body.password)
+        .await?;
 
     Ok(Json(response))
 }
@@ -61,7 +64,10 @@ async fn refresh(
     State(state): State<AppState>,
     AppJson(body): AppJson<RefreshRequest>,
 ) -> Result<Json<RefreshResponse>, AppError> {
-    let response = AuthService::refresh(&state.db, &state.config, &body.refresh_token).await?;
+    let response = state
+        .auth_service
+        .refresh(&state.config, &body.refresh_token)
+        .await?;
 
     Ok(Json(response))
 }
@@ -70,7 +76,7 @@ async fn logout(
     State(state): State<AppState>,
     AppJson(body): AppJson<RefreshRequest>,
 ) -> Result<StatusCode, AppError> {
-    AuthService::logout(&state.db, &body.refresh_token).await?;
+    state.auth_service.logout(&body.refresh_token).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -82,6 +88,6 @@ async fn setup(
     AppJson(body): AppJson<SetupRequest>,
 ) -> Result<(StatusCode, Json<SetupResponse>), AppError> {
     body.validate()?;
-    let response = UserService::setup(&state.db, body).await?;
+    let response = state.user_service.setup(body).await?;
     Ok((StatusCode::CREATED, Json(response)))
 }

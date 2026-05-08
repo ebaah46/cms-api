@@ -45,7 +45,7 @@ async fn list_members(
     _user: RequireStaff,
     Query(query): Query<MemberQuery>,
 ) -> Result<Json<ListResponse<MemberResponse>>, AppError> {
-    let members = MemberService::find_all(&state.db, query).await?;
+    let members = state.member_service.find_all(query).await?;
     Ok(Json(members))
 }
 
@@ -55,7 +55,7 @@ async fn create_member(
     AppJson(body): AppJson<CreateMemberRequest>,
 ) -> Result<(StatusCode, Json<MemberResponse>), AppError> {
     body.validate()?;
-    let member = MemberService::create(&state.db, body).await?;
+    let member = state.member_service.create(body).await?;
     Ok((StatusCode::CREATED, Json(member)))
 }
 
@@ -64,7 +64,7 @@ async fn get_member(
     _user: RequireStaff,
     Path(id): Path<Uuid>,
 ) -> Result<Json<MemberResponse>, AppError> {
-    let member = MemberService::find_by_id(&state.db, id).await?;
+    let member = state.member_service.find_by_id(id).await?;
     Ok(Json(member))
 }
 
@@ -73,7 +73,7 @@ async fn get_member_detail(
     _user: RequireStaff,
     Path(id): Path<Uuid>,
 ) -> Result<Json<MemberDetailResponse>, AppError> {
-    let member = MemberService::find_detail_by_id(&state.db, id).await?;
+    let member = state.member_service.find_detail_by_id(id).await?;
     Ok(Json(member))
 }
 
@@ -84,7 +84,7 @@ async fn update_member(
     AppJson(body): AppJson<UpdateMemberRequest>,
 ) -> Result<Json<MemberResponse>, AppError> {
     body.validate()?;
-    let member = MemberService::update(&state.db, id, body).await?;
+    let member = state.member_service.update(id, body).await?;
     Ok(Json(member))
 }
 
@@ -95,7 +95,7 @@ async fn update_member_detail(
     AppJson(body): AppJson<UpdateMemberDetailRequest>,
 ) -> Result<Json<MemberDetailResponse>, AppError> {
     body.validate()?;
-    let member = MemberService::update_detail(&state.db, id, body).await?;
+    let member = state.member_service.update_detail(id, body).await?;
     Ok(Json(member))
 }
 
@@ -104,7 +104,7 @@ async fn delete_member(
     _admin: RequireAdmin,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    MemberService::delete(&state.db, id).await?;
+    state.member_service.delete(id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -114,13 +114,10 @@ async fn get_member_attendance(
     Path(id): Path<Uuid>,
     Query(pagination): Query<PaginationParams>,
 ) -> Result<Json<Vec<AttendanceResponse>>, AppError> {
-    let attendance = AttendanceService::get_member_attendance(
-        &state.db,
-        id,
-        Some(pagination.page()),
-        Some(pagination.limit()),
-    )
-    .await?;
+    let attendance = state
+        .attendance_service
+        .get_member_attendance(id, Some(pagination.page()), Some(pagination.limit()))
+        .await?;
     Ok(Json(attendance))
 }
 
@@ -129,8 +126,8 @@ async fn get_member_groups(
     _user: RequireStaff,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<GroupResponse>>, AppError> {
-    let groups = GroupRepository::get_member_groups(&state.db, id).await?;
-    Ok(Json(groups.into_iter().map(|g| g.into()).collect()))
+    let groups = state.group_service.get_member_groups(id).await?;
+    Ok(Json(groups))
 }
 
 async fn import_members(
@@ -151,7 +148,7 @@ async fn import_members(
                 .await
                 .map_err(|e| AppError::BadRequest(format!("Failed to read file: {}", e)))?;
 
-            let result = ImportService::import_members_from_csv(&state.db, &data).await?;
+            let result = state.import_service.import_members_from_csv(&data).await?;
             return Ok(Json(result));
         }
     }

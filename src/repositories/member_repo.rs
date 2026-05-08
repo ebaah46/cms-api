@@ -1,16 +1,102 @@
+use async_trait::async_trait;
 use chrono::NaiveDate;
 use sqlx::PgPool;
 use tower::builder;
 use uuid::Uuid;
 use validator::ValidateRequired;
 
-use crate::models::member::{Member, MemberDetail};
+use crate::{
+    models::member::{Member, MemberDetail},
+    repositories::user_repo::PostgresUserRepository,
+};
 
-pub struct MemberRepository;
+#[async_trait]
+pub trait MemberRepository: Send + Sync {
+    async fn create(
+        &self,
+        first_name: &str,
+        last_name: &str,
+        email: Option<&str>,
+        phone: Option<&str>,
+        date_of_birth: Option<NaiveDate>,
+        gender: Option<&str>,
+        address: Option<&str>,
+        membership_status: &str,
+        membership_date: Option<NaiveDate>,
+        household_id: Option<Uuid>,
+        household_role: Option<&str>,
+    ) -> Result<Member, sqlx::Error>;
 
-impl MemberRepository {
-    pub async fn create(
-        pool: &PgPool,
+    async fn create_detail(&self, params: CreateMemberParams) -> Result<MemberDetail, sqlx::Error>;
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Member>, sqlx::Error>;
+
+    async fn find_detail_by_id(&self, id: Uuid) -> Result<Option<MemberDetail>, sqlx::Error>;
+
+    async fn find_all(
+        &self,
+        search: Option<&str>,
+        membership_status: Option<&str>,
+        household_id: Option<Uuid>,
+        limit: i32,
+        offset: i32,
+    ) -> Result<Vec<Member>, sqlx::Error>;
+
+    async fn count(
+        &self,
+        search: Option<&str>,
+        membership_status: Option<&str>,
+        household_id: Option<Uuid>,
+    ) -> Result<i64, sqlx::Error>;
+
+    async fn find_by_household(&self, household_id: Uuid) -> Result<Vec<Member>, sqlx::Error>;
+
+    async fn update(
+        &self,
+        id: Uuid,
+        first_name: Option<&str>,
+        last_name: Option<&str>,
+        email: Option<&str>,
+        phone: Option<&str>,
+        date_of_birth: Option<NaiveDate>,
+        gender: Option<&str>,
+        address: Option<&str>,
+        membership_status: Option<&str>,
+        membership_date: Option<NaiveDate>,
+        household_id: Option<Uuid>,
+        household_role: Option<&str>,
+    ) -> Result<Option<Member>, sqlx::Error>;
+
+    async fn update_detail(
+        &self,
+        id: Uuid,
+        params: UpdateMemberParams,
+    ) -> Result<Option<MemberDetail>, sqlx::Error>;
+
+    async fn update_household(
+        &self,
+        member_id: Uuid,
+        household_id: Option<Uuid>,
+        household_role: Option<&str>,
+    ) -> Result<Option<Member>, sqlx::Error>;
+
+    async fn soft_delete(&self, id: Uuid) -> Result<bool, sqlx::Error>;
+}
+
+pub struct PostgresMemberRepository {
+    pool: PgPool,
+}
+
+impl PostgresMemberRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl MemberRepository for PostgresMemberRepository {
+    async fn create(
+        &self,
         first_name: &str,
         last_name: &str,
         email: Option<&str>,
@@ -45,14 +131,11 @@ impl MemberRepository {
         .bind(membership_date)
         .bind(household_id)
         .bind(household_role)
-        .fetch_one(pool)
+        .fetch_one(&self.pool)
         .await
     }
 
-    pub async fn create_detail(
-        pool: &PgPool,
-        params: CreateMemberParams,
-    ) -> Result<MemberDetail, sqlx::Error> {
+    async fn create_detail(&self, params: CreateMemberParams) -> Result<MemberDetail, sqlx::Error> {
         sqlx::query_as::<_, MemberDetail>(
             r#"
             INSERT INTO member_details (
@@ -71,31 +154,28 @@ impl MemberRepository {
         .bind(params.date_of_baptism).bind(params.place_of_baptism).bind(params.baptism_officiating_minister).bind(params.date_of_confirmation).bind(params.place_of_confirmation)
         .bind(params.confirmation_officiating_minister).bind(params.confirmation_text).bind(params.photo_url).bind(params.house_location).bind(params.house_number)
         .bind(params.gps_address)
-        .fetch_one(pool)
+        .fetch_one(&self.pool)
         .await
     }
 
-    pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Member>, sqlx::Error> {
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Member>, sqlx::Error> {
         sqlx::query_as::<_, Member>("SELECT * FROM members WHERE id = $1 AND deleted_at IS NULL")
             .bind(id)
-            .fetch_optional(pool)
+            .fetch_optional(&self.pool)
             .await
     }
 
-    pub async fn find_detail_by_id(
-        pool: &PgPool,
-        id: Uuid,
-    ) -> Result<Option<MemberDetail>, sqlx::Error> {
+    async fn find_detail_by_id(&self, id: Uuid) -> Result<Option<MemberDetail>, sqlx::Error> {
         sqlx::query_as::<_, MemberDetail>(
             "SELECT * FROM member_details WHERE member_id = $1 AND deleted_at IS NULL",
         )
         .bind(id)
-        .fetch_optional(pool)
+        .fetch_optional(&self.pool)
         .await
     }
 
-    pub async fn find_all(
-        pool: &PgPool,
+    async fn find_all(
+        &self,
         search: Option<&str>,
         membership_status: Option<&str>,
         household_id: Option<Uuid>,
@@ -141,11 +221,11 @@ impl MemberRepository {
             q = q.bind(hid);
         }
 
-        q.bind(limit).bind(offset).fetch_all(pool).await
+        q.bind(limit).bind(offset).fetch_all(&self.pool).await
     }
 
-    pub async fn count(
-        pool: &PgPool,
+    async fn count(
+        &self,
         search: Option<&str>,
         membership_status: Option<&str>,
         household_id: Option<Uuid>,
@@ -183,24 +263,21 @@ impl MemberRepository {
             q = q.bind(hid);
         }
 
-        let result = q.fetch_one(pool).await?;
+        let result = q.fetch_one(&self.pool).await?;
         Ok(result.0)
     }
 
-    pub async fn find_by_household(
-        pool: &PgPool,
-        household_id: Uuid,
-    ) -> Result<Vec<Member>, sqlx::Error> {
+    async fn find_by_household(&self, household_id: Uuid) -> Result<Vec<Member>, sqlx::Error> {
         sqlx::query_as::<_, Member>(
             "SELECT * FROM members WHERE household_id = $1 AND deleted_at IS NULL ORDER BY last_name, first_name",
         )
         .bind(household_id)
-        .fetch_all(pool)
+        .fetch_all(&self.pool)
         .await
     }
 
-    pub async fn update(
-        pool: &PgPool,
+    async fn update(
+        &self,
         id: Uuid,
         first_name: Option<&str>,
         last_name: Option<&str>,
@@ -246,12 +323,12 @@ impl MemberRepository {
         .bind(membership_date)
         .bind(household_id)
         .bind(household_role)
-        .fetch_optional(pool)
+        .fetch_optional(&self.pool)
         .await
     }
 
-    pub async fn update_detail(
-        pool: &PgPool,
+    async fn update_detail(
+        &self,
         id: Uuid,
         params: UpdateMemberParams,
     ) -> Result<Option<MemberDetail>, sqlx::Error> {
@@ -313,12 +390,12 @@ impl MemberRepository {
         .bind(params.house_location)
         .bind(params.house_number)
         .bind(params.gps_address)
-        .fetch_optional(pool)
+        .fetch_optional(&self.pool)
         .await
     }
 
-    pub async fn update_household(
-        pool: &PgPool,
+    async fn update_household(
+        &self,
         member_id: Uuid,
         household_id: Option<Uuid>,
         household_role: Option<&str>,
@@ -334,11 +411,11 @@ impl MemberRepository {
         .bind(member_id)
         .bind(household_id)
         .bind(household_role)
-        .fetch_optional(pool)
+        .fetch_optional(&self.pool)
         .await
     }
 
-    pub async fn soft_delete(pool: &PgPool, id: Uuid) -> Result<bool, sqlx::Error> {
+    async fn soft_delete(&self, id: Uuid) -> Result<bool, sqlx::Error> {
         let result = sqlx::query(
             r#"
             WITH updated_member AS (
@@ -353,7 +430,7 @@ impl MemberRepository {
             "#,
         )
         .bind(id)
-        .execute(pool)
+        .execute(&self.pool)
         .await?;
         Ok(result.rows_affected() > 0)
     }

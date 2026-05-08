@@ -1,13 +1,54 @@
+use async_trait::async_trait;
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::models::household::Household;
 
-pub struct HouseholdRepository;
+#[async_trait]
+pub trait HouseholdRepository: Send + Sync {
+    async fn create(
+        &self,
+        name: &str,
+        address: Option<&str>,
+        phone: Option<&str>,
+    ) -> Result<Household, sqlx::Error>;
 
-impl HouseholdRepository {
-    pub async fn create(
-        pool: &PgPool,
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Household>, sqlx::Error>;
+
+    async fn find_all(
+        &self,
+        search: Option<&str>,
+        limit: i32,
+        offset: i32,
+    ) -> Result<Vec<Household>, sqlx::Error>;
+
+    async fn count(&self, search: Option<&str>) -> Result<i64, sqlx::Error>;
+
+    async fn update(
+        &self,
+        id: Uuid,
+        name: Option<&str>,
+        address: Option<&str>,
+        phone: Option<&str>,
+    ) -> Result<Option<Household>, sqlx::Error>;
+
+    async fn delete(&self, id: Uuid) -> Result<bool, sqlx::Error>;
+}
+
+pub struct PostgresHouseholdRepository {
+    pool: PgPool,
+}
+
+impl PostgresHouseholdRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl HouseholdRepository for PostgresHouseholdRepository {
+    async fn create(
+        &self,
         name: &str,
         address: Option<&str>,
         phone: Option<&str>,
@@ -22,19 +63,19 @@ impl HouseholdRepository {
         .bind(name)
         .bind(address)
         .bind(phone)
-        .fetch_one(pool)
+        .fetch_one(&self.pool)
         .await
     }
 
-    pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Household>, sqlx::Error> {
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Household>, sqlx::Error> {
         sqlx::query_as::<_, Household>("SELECT * FROM households WHERE id = $1")
             .bind(id)
-            .fetch_optional(pool)
+            .fetch_optional(&self.pool)
             .await
     }
 
-    pub async fn find_all(
-        pool: &PgPool,
+    async fn find_all(
+        &self,
         search: Option<&str>,
         limit: i32,
         offset: i32,
@@ -53,7 +94,7 @@ impl HouseholdRepository {
                 .bind(&pattern)
                 .bind(limit)
                 .bind(offset)
-                .fetch_all(pool)
+                .fetch_all(&self.pool)
                 .await
             }
             None => {
@@ -62,13 +103,13 @@ impl HouseholdRepository {
                 )
                 .bind(limit)
                 .bind(offset)
-                .fetch_all(pool)
+                .fetch_all(&self.pool)
                 .await
             }
         }
     }
 
-    pub async fn count(pool: &PgPool, search: Option<&str>) -> Result<i64, sqlx::Error> {
+    async fn count(&self, search: Option<&str>) -> Result<i64, sqlx::Error> {
         let result: (i64,) = match search {
             Some(s) => {
                 let pattern = format!("%{}%", s);
@@ -76,20 +117,20 @@ impl HouseholdRepository {
                     "SELECT COUNT(*) FROM households WHERE name ILIKE $1 OR address ILIKE $1",
                 )
                 .bind(&pattern)
-                .fetch_one(pool)
+                .fetch_one(&self.pool)
                 .await?
             }
             None => {
                 sqlx::query_as("SELECT COUNT(*) FROM households")
-                    .fetch_one(pool)
+                    .fetch_one(&self.pool)
                     .await?
             }
         };
         Ok(result.0)
     }
 
-    pub async fn update(
-        pool: &PgPool,
+    async fn update(
+        &self,
         id: Uuid,
         name: Option<&str>,
         address: Option<&str>,
@@ -111,14 +152,14 @@ impl HouseholdRepository {
         .bind(name)
         .bind(address)
         .bind(phone)
-        .fetch_optional(pool)
+        .fetch_optional(&self.pool)
         .await
     }
 
-    pub async fn delete(pool: &PgPool, id: Uuid) -> Result<bool, sqlx::Error> {
+    async fn delete(&self, id: Uuid) -> Result<bool, sqlx::Error> {
         let result = sqlx::query("DELETE FROM households WHERE id = $1")
             .bind(id)
-            .execute(pool)
+            .execute(&self.pool)
             .await?;
         Ok(result.rows_affected() > 0)
     }

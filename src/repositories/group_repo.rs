@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
@@ -14,11 +15,68 @@ pub struct GroupMemberRow {
     pub joined_at: DateTime<Utc>,
 }
 
-pub struct GroupRepository;
+#[async_trait]
+pub trait GroupRepository: Send + Sync {
+    async fn create(
+        &self,
+        name: &str,
+        group_type: &str,
+        description: Option<&str>,
+    ) -> Result<Group, sqlx::Error>;
 
-impl GroupRepository {
-    pub async fn create(
-        pool: &PgPool,
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Group>, sqlx::Error>;
+
+    async fn find_all(
+        &self,
+        search: Option<&str>,
+        group_type: Option<&str>,
+        limit: i32,
+        offset: i32,
+    ) -> Result<Vec<Group>, sqlx::Error>;
+
+    async fn count(
+        &self,
+        search: Option<&str>,
+        group_type: Option<&str>,
+    ) -> Result<i64, sqlx::Error>;
+
+    async fn update(
+        &self,
+        id: Uuid,
+        name: Option<&str>,
+        group_type: Option<&str>,
+        description: Option<&str>,
+    ) -> Result<Option<Group>, sqlx::Error>;
+
+    async fn delete(&self, id: Uuid) -> Result<bool, sqlx::Error>;
+
+    async fn add_member(
+        &self,
+        group_id: Uuid,
+        member_id: Uuid,
+        role: Option<&str>,
+    ) -> Result<MemberGroup, sqlx::Error>;
+
+    async fn remove_member(&self, group_id: Uuid, member_id: Uuid) -> Result<bool, sqlx::Error>;
+
+    async fn get_members(&self, group_id: Uuid) -> Result<Vec<GroupMemberRow>, sqlx::Error>;
+
+    async fn get_member_groups(&self, member_id: Uuid) -> Result<Vec<Group>, sqlx::Error>;
+}
+
+pub struct PostgresGroupRepository {
+    pool: PgPool,
+}
+impl PostgresGroupRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl GroupRepository for PostgresGroupRepository {
+    async fn create(
+        &self,
         name: &str,
         group_type: &str,
         description: Option<&str>,
@@ -33,19 +91,19 @@ impl GroupRepository {
         .bind(name)
         .bind(group_type)
         .bind(description)
-        .fetch_one(pool)
+        .fetch_one(&self.pool)
         .await
     }
 
-    pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Group>, sqlx::Error> {
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Group>, sqlx::Error> {
         sqlx::query_as::<_, Group>("SELECT * FROM groups WHERE id = $1")
             .bind(id)
-            .fetch_optional(pool)
+            .fetch_optional(&self.pool)
             .await
     }
 
-    pub async fn find_all(
-        pool: &PgPool,
+    async fn find_all(
+        &self,
         search: Option<&str>,
         group_type: Option<&str>,
         limit: i32,
@@ -79,11 +137,11 @@ impl GroupRepository {
             q = q.bind(gt);
         }
 
-        q.bind(limit).bind(offset).fetch_all(pool).await
+        q.bind(limit).bind(offset).fetch_all(&self.pool).await
     }
 
-    pub async fn count(
-        pool: &PgPool,
+    async fn count(
+        &self,
         search: Option<&str>,
         group_type: Option<&str>,
     ) -> Result<i64, sqlx::Error> {
@@ -109,12 +167,12 @@ impl GroupRepository {
             q = q.bind(gt);
         }
 
-        let result = q.fetch_one(pool).await?;
+        let result = q.fetch_one(&self.pool).await?;
         Ok(result.0)
     }
 
-    pub async fn update(
-        pool: &PgPool,
+    async fn update(
+        &self,
         id: Uuid,
         name: Option<&str>,
         group_type: Option<&str>,
@@ -136,20 +194,20 @@ impl GroupRepository {
         .bind(name)
         .bind(group_type)
         .bind(description)
-        .fetch_optional(pool)
+        .fetch_optional(&self.pool)
         .await
     }
 
-    pub async fn delete(pool: &PgPool, id: Uuid) -> Result<bool, sqlx::Error> {
+    async fn delete(&self, id: Uuid) -> Result<bool, sqlx::Error> {
         let result = sqlx::query("DELETE FROM groups WHERE id = $1")
             .bind(id)
-            .execute(pool)
+            .execute(&self.pool)
             .await?;
         Ok(result.rows_affected() > 0)
     }
 
-    pub async fn add_member(
-        pool: &PgPool,
+    async fn add_member(
+        &self,
         group_id: Uuid,
         member_id: Uuid,
         role: Option<&str>,
@@ -165,28 +223,21 @@ impl GroupRepository {
         .bind(member_id)
         .bind(group_id)
         .bind(role.unwrap_or("member"))
-        .fetch_one(pool)
+        .fetch_one(&self.pool)
         .await
     }
 
-    pub async fn remove_member(
-        pool: &PgPool,
-        group_id: Uuid,
-        member_id: Uuid,
-    ) -> Result<bool, sqlx::Error> {
+    async fn remove_member(&self, group_id: Uuid, member_id: Uuid) -> Result<bool, sqlx::Error> {
         let result =
             sqlx::query("DELETE FROM member_groups WHERE group_id = $1 AND member_id = $2")
                 .bind(group_id)
                 .bind(member_id)
-                .execute(pool)
+                .execute(&self.pool)
                 .await?;
         Ok(result.rows_affected() > 0)
     }
 
-    pub async fn get_members(
-        pool: &PgPool,
-        group_id: Uuid,
-    ) -> Result<Vec<GroupMemberRow>, sqlx::Error> {
+    async fn get_members(&self, group_id: Uuid) -> Result<Vec<GroupMemberRow>, sqlx::Error> {
         sqlx::query_as::<_, GroupMemberRow>(
             r#"
             SELECT m.id as member_id, m.first_name, m.last_name, m.email, mg.role, mg.joined_at
@@ -197,14 +248,11 @@ impl GroupRepository {
             "#,
         )
         .bind(group_id)
-        .fetch_all(pool)
+        .fetch_all(&self.pool)
         .await
     }
 
-    pub async fn get_member_groups(
-        pool: &PgPool,
-        member_id: Uuid,
-    ) -> Result<Vec<Group>, sqlx::Error> {
+    async fn get_member_groups(&self, member_id: Uuid) -> Result<Vec<Group>, sqlx::Error> {
         sqlx::query_as::<_, Group>(
             r#"
             SELECT g.*
@@ -215,7 +263,7 @@ impl GroupRepository {
             "#,
         )
         .bind(member_id)
-        .fetch_all(pool)
+        .fetch_all(&self.pool)
         .await
     }
 }

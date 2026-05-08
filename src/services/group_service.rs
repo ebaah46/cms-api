@@ -145,4 +145,16 @@ impl GroupService {
             })
             .collect())
     }
+
+    pub async fn get_member_groups(&self, member_id: Uuid) -> Result<Vec<GroupResponse>, AppError> {
+        let member_groups = self.group_repo.get_member_groups(member_id).await?;
+        let gps: Vec<GroupResponse> = member_groups
+            .into_iter()
+            .map(|g| {
+                let group: GroupResponse = g.into();
+                group
+            })
+            .collect::<Vec<_>>();
+        Ok(gps)
+    }
 }

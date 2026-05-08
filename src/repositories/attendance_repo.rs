@@ -16,7 +16,7 @@ pub struct AttendanceWithMemberRow {
 }
 
 #[async_trait]
-pub trait AttendanceRepository {
+pub trait AttendanceRepository: Send + Sync {
     async fn check_in(
         &self,
         member_id: Uuid,

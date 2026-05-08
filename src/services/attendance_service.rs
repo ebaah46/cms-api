@@ -10,7 +10,6 @@ use crate::errors::AppError;
 use crate::repositories::AttendanceRepository;
 use crate::repositories::MemberRepository;
 use crate::repositories::ServiceRepository;
-use crate::repositories::service_repo::ServiceRepository;
 
 pub struct AttendanceService {
     attendance_repo: Arc<dyn AttendanceRepository>,
@@ -22,7 +21,7 @@ impl AttendanceService {
     pub fn new(
         attendance_repo: Arc<dyn AttendanceRepository>,
         member_repo: Arc<dyn MemberRepository>,
-        service_repo: Arc<dyn PostgresServiceRepository>,
+        service_repo: Arc<dyn ServiceRepository>,
     ) -> Self {
         Self {
             attendance_repo,
@@ -138,7 +137,7 @@ impl AttendanceService {
         let offset = (page - 1) * limit;
 
         let attendance = self
-            .attendance
+            .attendance_repo
             .get_service_attendance(service_id, limit, offset)
             .await?;
         let total = self

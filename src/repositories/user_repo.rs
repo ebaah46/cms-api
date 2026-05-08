@@ -1,13 +1,51 @@
+use async_trait::async_trait;
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::models::user::User;
 
-pub struct UserRepository;
+#[async_trait]
+pub trait UserRepository: Send + Sync {
+    async fn create(
+        &self,
+        email: &str,
+        password_hash: &str,
+        role: &str,
+    ) -> Result<User, sqlx::Error>;
 
-impl UserRepository {
-    pub async fn create(
-        pool: &PgPool,
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, sqlx::Error>;
+
+    async fn find_by_email(&self, email: &str) -> Result<Option<User>, sqlx::Error>;
+
+    async fn find_all(&self, limit: i32, offset: i32) -> Result<Vec<User>, sqlx::Error>;
+
+    async fn count(&self) -> Result<i64, sqlx::Error>;
+
+    async fn update(
+        &self,
+        id: Uuid,
+        email: Option<&str>,
+        password_hash: Option<&str>,
+        role: Option<&str>,
+    ) -> Result<Option<User>, sqlx::Error>;
+
+    async fn delete(&self, id: Uuid) -> Result<bool, sqlx::Error>;
+}
+
+pub struct PostgresUserRepository {
+    pub pool: PgPool,
+}
+
+impl PostgresUserRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl UserRepository for PostgresUserRepository {
+    async fn create(
+        &self,
         email: &str,
         password_hash: &str,
         role: &str,
@@ -22,47 +60,41 @@ impl UserRepository {
         .bind(email)
         .bind(password_hash)
         .bind(role)
-        .fetch_one(pool)
+        .fetch_one(&self.pool)
         .await
     }
 
-    pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<User>, sqlx::Error> {
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, sqlx::Error> {
         sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
             .bind(id)
-            .fetch_optional(pool)
+            .fetch_optional(&self.pool)
             .await
     }
 
-    pub async fn find_by_email(pool: &PgPool, email: &str) -> Result<Option<User>, sqlx::Error> {
+    async fn find_by_email(&self, email: &str) -> Result<Option<User>, sqlx::Error> {
         sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1")
             .bind(email)
-            .fetch_optional(pool)
+            .fetch_optional(&self.pool)
             .await
     }
 
-    pub async fn find_all(
-        pool: &PgPool,
-        limit: i32,
-        offset: i32,
-    ) -> Result<Vec<User>, sqlx::Error> {
-        sqlx::query_as::<_, User>(
-            "SELECT * FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2",
-        )
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(pool)
-        .await
+    async fn find_all(&self, limit: i32, offset: i32) -> Result<Vec<User>, sqlx::Error> {
+        sqlx::query_as::<_, User>("SELECT * FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2")
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await
     }
 
-    pub async fn count(pool: &PgPool) -> Result<i64, sqlx::Error> {
+    async fn count(&self) -> Result<i64, sqlx::Error> {
         let result: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
-            .fetch_one(pool)
+            .fetch_one(&self.pool)
             .await?;
         Ok(result.0)
     }
 
-    pub async fn update(
-        pool: &PgPool,
+    async fn update(
+        &self,
         id: Uuid,
         email: Option<&str>,
         password_hash: Option<&str>,
@@ -84,14 +116,14 @@ impl UserRepository {
         .bind(email)
         .bind(password_hash)
         .bind(role)
-        .fetch_optional(pool)
+        .fetch_optional(&self.pool)
         .await
     }
 
-    pub async fn delete(pool: &PgPool, id: Uuid) -> Result<bool, sqlx::Error> {
+    async fn delete(&self, id: Uuid) -> Result<bool, sqlx::Error> {
         let result = sqlx::query("DELETE FROM users WHERE id = $1")
             .bind(id)
-            .execute(pool)
+            .execute(&self.pool)
             .await?;
         Ok(result.rows_affected() > 0)
     }

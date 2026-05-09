@@ -131,7 +131,7 @@ impl UserRepository for PostgresUserRepository {
 }
 
 #[async_trait]
-pub trait RefreshTokenRepository {
+pub trait RefreshTokenRepository: Send + Sync {
     async fn create(
         &self,
         user_id: Uuid,

@@ -1,19 +1,18 @@
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::get,
-    Json, Router,
 };
 use uuid::Uuid;
 use validator::Validate;
 
+use crate::AppState;
 use crate::dto::user_dto::{CreateUserRequest, UpdateUserRequest, UserResponse};
 use crate::dto::{ListResponse, PaginationParams};
 use crate::errors::AppError;
 use crate::extractors::AppJson;
 use crate::middleware::auth::RequireAdmin;
-use crate::services::user_service::UserService;
-use crate::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -26,7 +25,7 @@ async fn list_users(
     _admin: RequireAdmin,
     Query(pagination): Query<PaginationParams>,
 ) -> Result<Json<ListResponse<UserResponse>>, AppError> {
-    let users = UserService::find_all(&state.db, pagination).await?;
+    let users = state.user_service.find_all(pagination).await?;
     Ok(Json(users))
 }
 
@@ -36,7 +35,7 @@ async fn create_user(
     AppJson(body): AppJson<CreateUserRequest>,
 ) -> Result<(StatusCode, Json<UserResponse>), AppError> {
     body.validate()?;
-    let user = UserService::create(&state.db, body).await?;
+    let user = state.user_service.create(body).await?;
     Ok((StatusCode::CREATED, Json(user)))
 }
 
@@ -45,7 +44,7 @@ async fn get_user(
     _admin: RequireAdmin,
     Path(id): Path<Uuid>,
 ) -> Result<Json<UserResponse>, AppError> {
-    let user = UserService::find_by_id(&state.db, id).await?;
+    let user = state.user_service.find_by_id(id).await?;
     Ok(Json(user))
 }
 
@@ -56,7 +55,7 @@ async fn update_user(
     Json(body): Json<UpdateUserRequest>,
 ) -> Result<Json<UserResponse>, AppError> {
     body.validate()?;
-    let user = UserService::update(&state.db, id, body).await?;
+    let user = state.user_service.update(id, body).await?;
     Ok(Json(user))
 }
 
@@ -65,6 +64,6 @@ async fn delete_user(
     _admin: RequireAdmin,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    UserService::delete(&state.db, id).await?;
+    state.user_service.delete(id).await?;
     Ok(StatusCode::NO_CONTENT)
 }

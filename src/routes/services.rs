@@ -1,30 +1,30 @@
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::get,
-    Json, Router,
 };
 use uuid::Uuid;
 use validator::Validate;
 
+use crate::AppState;
+use crate::dto::ListResponse;
 use crate::dto::attendance_dto::{AttendanceQuery, AttendanceWithMemberResponse};
 use crate::dto::service_dto::{
     CreateServiceRequest, ServiceQuery, ServiceResponse, UpdateServiceRequest,
 };
-use crate::dto::ListResponse;
 use crate::errors::AppError;
 use crate::extractors::AppJson;
 use crate::middleware::auth::{RequireAdmin, RequireStaff};
-use crate::services::attendance_service::AttendanceService;
-use crate::services::service_service::ServiceService;
-use crate::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_services).post(create_service))
         .route(
             "/:id",
-            get(get_service).patch(update_service).delete(delete_service),
+            get(get_service)
+                .patch(update_service)
+                .delete(delete_service),
         )
         .route("/:id/attendance", get(get_service_attendance))
 }
@@ -34,7 +34,7 @@ async fn list_services(
     _user: RequireStaff,
     Query(query): Query<ServiceQuery>,
 ) -> Result<Json<ListResponse<ServiceResponse>>, AppError> {
-    let services = ServiceService::find_all(&state.db, query).await?;
+    let services = state.service_service.find_all(query).await?;
     Ok(Json(services))
 }
 
@@ -44,7 +44,7 @@ async fn create_service(
     AppJson(body): AppJson<CreateServiceRequest>,
 ) -> Result<(StatusCode, Json<ServiceResponse>), AppError> {
     body.validate()?;
-    let service = ServiceService::create(&state.db, body).await?;
+    let service = state.service_service.create(body).await?;
     Ok((StatusCode::CREATED, Json(service)))
 }
 
@@ -53,7 +53,7 @@ async fn get_service(
     _user: RequireStaff,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ServiceResponse>, AppError> {
-    let service = ServiceService::find_by_id(&state.db, id).await?;
+    let service = state.service_service.find_by_id(id).await?;
     Ok(Json(service))
 }
 
@@ -64,7 +64,7 @@ async fn update_service(
     AppJson(body): AppJson<UpdateServiceRequest>,
 ) -> Result<Json<ServiceResponse>, AppError> {
     body.validate()?;
-    let service = ServiceService::update(&state.db, id, body).await?;
+    let service = state.service_service.update(id, body).await?;
     Ok(Json(service))
 }
 
@@ -73,7 +73,7 @@ async fn delete_service(
     _admin: RequireAdmin,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    ServiceService::delete(&state.db, id).await?;
+    state.service_service.delete(id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -83,7 +83,9 @@ async fn get_service_attendance(
     Path(id): Path<Uuid>,
     Query(query): Query<AttendanceQuery>,
 ) -> Result<Json<ListResponse<AttendanceWithMemberResponse>>, AppError> {
-    let attendance =
-        AttendanceService::get_service_attendance(&state.db, id, query.page, query.limit).await?;
+    let attendance = state
+        .attendance_service
+        .get_service_attendance(id, query.page, query.limit)
+        .await?;
     Ok(Json(attendance))
 }

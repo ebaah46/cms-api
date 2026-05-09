@@ -13,7 +13,6 @@ use crate::dto::attendance_dto::{
 use crate::errors::AppError;
 use crate::extractors::AppJson;
 use crate::middleware::auth::{RequireAdmin, RequireStaff};
-use crate::services::attendance_service::AttendanceService;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -28,9 +27,10 @@ async fn check_in(
     user: RequireStaff,
     AppJson(body): AppJson<CheckInRequest>,
 ) -> Result<(StatusCode, Json<AttendanceResponse>), AppError> {
-    let attendance =
-        AttendanceService::check_in(&state.db, body.member_id, body.service_id, Some(user.0.id))
-            .await?;
+    let attendance = state
+        .attendance_service
+        .check_in(body.member_id, body.service_id, Some(user.0.id))
+        .await?;
     Ok((StatusCode::CREATED, Json(attendance)))
 }
 
@@ -40,13 +40,10 @@ async fn bulk_check_in(
     user: RequireStaff,
     AppJson(body): AppJson<BulkCheckInRequest>,
 ) -> Result<Json<BulkCheckInResponse>, AppError> {
-    let result = AttendanceService::bulk_check_in(
-        &state.db,
-        body.service_id,
-        body.member_ids,
-        Some(user.0.id),
-    )
-    .await?;
+    let result = state
+        .attendance_service
+        .bulk_check_in(body.service_id, body.member_ids, Some(user.0.id))
+        .await?;
     Ok(Json(result))
 }
 
@@ -56,6 +53,6 @@ async fn delete_attendance(
     _admin: RequireAdmin,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    AttendanceService::delete(&state.db, id).await?;
+    state.attendance_service.delete(id).await?;
     Ok(StatusCode::NO_CONTENT)
 }

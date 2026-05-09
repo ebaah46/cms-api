@@ -9,12 +9,22 @@ pub mod routes;
 pub mod services;
 
 use config::Config;
+use sqlx::PgPool;
 use std::sync::Arc;
 
-use crate::services::{
-    attendance_service::AttendanceService, auth_service::AuthService, group_service::GroupService,
-    household_service::HouseholdService, import_service::ImportService,
-    member_service::MemberService, service_service::ServiceService, user_service::UserService,
+use crate::{
+    repositories::{
+        AttendanceRepository, GroupRepository, HouseholdRepository, MemberRepository,
+        PostgresAttendanceRepository, PostgresGroupRepository, PostgresHouseholdRepository,
+        PostgresMemberRepository, PostgresRefreshTokenRepository, PostgresServiceRepository,
+        PostgresUserRepository, RefreshTokenRepository, ServiceRepository, UserRepository,
+    },
+    services::{
+        attendance_service::AttendanceService, auth_service::AuthService,
+        group_service::GroupService, household_service::HouseholdService,
+        import_service::ImportService, member_service::MemberService,
+        service_service::ServiceService, user_service::UserService,
+    },
 };
 
 #[derive(Clone)]
@@ -108,5 +118,43 @@ impl AppStateBuilder {
             import_service: self.import_service.expect("Import service not found"),
             service_service: self.service_service.expect("Service service not found"),
         }
+    }
+}
+
+pub struct RepositoryManager {
+    pool: PgPool,
+}
+
+impl RepositoryManager {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
+    pub fn get_user_repo(&self) -> Arc<dyn UserRepository> {
+        Arc::new(PostgresUserRepository::new(self.pool.clone()))
+    }
+
+    pub fn get_attendance_repo(&self) -> Arc<dyn AttendanceRepository> {
+        Arc::new(PostgresAttendanceRepository::new(self.pool.clone()))
+    }
+
+    pub fn get_member_repo(&self) -> Arc<dyn MemberRepository> {
+        Arc::new(PostgresMemberRepository::new(self.pool.clone()))
+    }
+
+    pub fn get_household_repo(&self) -> Arc<dyn HouseholdRepository> {
+        Arc::new(PostgresHouseholdRepository::new(self.pool.clone()))
+    }
+
+    pub fn get_group_repo(&self) -> Arc<dyn GroupRepository> {
+        Arc::new(PostgresGroupRepository::new(self.pool.clone()))
+    }
+
+    pub fn get_service_repo(&self) -> Arc<dyn ServiceRepository> {
+        Arc::new(PostgresServiceRepository::new(self.pool.clone()))
+    }
+
+    pub fn get_refresh_token_repo(&self) -> Arc<dyn RefreshTokenRepository> {
+        Arc::new(PostgresRefreshTokenRepository::new(self.pool.clone()))
     }
 }

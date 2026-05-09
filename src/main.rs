@@ -1,13 +1,23 @@
 use axum::{
-    http::{header, Method},
     Router,
+    http::{Method, header},
 };
 use sqlx::postgres::PgPoolOptions;
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use cms_api::{config::Config, routes, AppState};
+use cms_api::{
+    AppStateBuilder, RepositoryManager,
+    config::Config,
+    routes,
+    services::{
+        attendance_service::AttendanceService, auth_service::AuthService,
+        group_service::GroupService, household_service::HouseholdService,
+        import_service::ImportService, member_service::MemberService,
+        service_service::ServiceService, user_service::UserService,
+    },
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -41,8 +51,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("Database migrations completed");
 
+    // Create repositories needed in backend
+    let repo_manager = RepositoryManager::new(pool);
+    let attendance_repo = repo_manager.get_attendance_repo();
+    let member_repo = repo_manager.get_member_repo();
+    let service_repo = repo_manager.get_service_repo();
+    let household_repo = repo_manager.get_household_repo();
+    let group_repo = repo_manager.get_group_repo();
+    let refresh_token_repo = repo_manager.get_refresh_token_repo();
+    let user_repo = repo_manager.get_user_repo();
+
     // Create app state
-    let state = AppState::new(pool, config.clone());
+    let state = AppStateBuilder::new(config.clone())
+        .attendance_service(Arc::new(AttendanceService::new(
+            attendance_repo.clone(),
+            member_repo.clone(),
+            service_repo.clone(),
+        )))
+        .member_service(Arc::new(MemberService::new(member_repo.clone())))
+        .auth_service(Arc::new(AuthService::new(
+            user_repo.clone(),
+            refresh_token_repo.clone(),
+        )))
+        .group_service(Arc::new(GroupService::new(
+            group_repo.clone(),
+            member_repo.clone(),
+        )))
+        .household_service(Arc::new(HouseholdService::new(
+            household_repo.clone(),
+            member_repo.clone(),
+        )))
+        .service_service(Arc::new(ServiceService::new(service_repo.clone())))
+        .import_service(Arc::new(ImportService::new(member_repo.clone())))
+        .user_service(Arc::new(UserService::new(user_repo.clone())))
+        .build();
 
     // Configure CORS
     let cors = CorsLayer::new()

@@ -8,22 +8,105 @@ pub mod repositories;
 pub mod routes;
 pub mod services;
 
-use sqlx::PgPool;
+use config::Config;
 use std::sync::Arc;
 
-use config::Config;
+use crate::services::{
+    attendance_service::AttendanceService, auth_service::AuthService, group_service::GroupService,
+    household_service::HouseholdService, import_service::ImportService,
+    member_service::MemberService, service_service::ServiceService, user_service::UserService,
+};
 
 #[derive(Clone)]
 pub struct AppState {
-    pub db: PgPool,
     pub config: Arc<Config>,
+    pub user_service: Arc<UserService>,
+    pub member_service: Arc<MemberService>,
+    pub attendance_service: Arc<AttendanceService>,
+    pub auth_service: Arc<AuthService>,
+    pub group_service: Arc<GroupService>,
+    pub household_service: Arc<HouseholdService>,
+    pub import_service: Arc<ImportService>,
+    pub service_service: Arc<ServiceService>,
 }
 
-impl AppState {
-    pub fn new(db: PgPool, config: Config) -> Self {
+pub struct AppStateBuilder {
+    config: Arc<Config>,
+    user_service: Option<Arc<UserService>>,
+    member_service: Option<Arc<MemberService>>,
+    attendance_service: Option<Arc<AttendanceService>>,
+    auth_service: Option<Arc<AuthService>>,
+    group_service: Option<Arc<GroupService>>,
+    household_service: Option<Arc<HouseholdService>>,
+    import_service: Option<Arc<ImportService>>,
+    service_service: Option<Arc<ServiceService>>,
+}
+
+impl AppStateBuilder {
+    pub fn new(config: Config) -> Self {
         Self {
-            db,
             config: Arc::new(config),
+            user_service: None,
+            member_service: None,
+            attendance_service: None,
+            auth_service: None,
+            group_service: None,
+            household_service: None,
+            import_service: None,
+            service_service: None,
+        }
+    }
+
+    pub fn user_service(mut self, user_service: Arc<UserService>) -> Self {
+        self.user_service = Some(user_service);
+        self
+    }
+
+    pub fn member_service(mut self, member_service: Arc<MemberService>) -> Self {
+        self.member_service = Some(member_service);
+        self
+    }
+
+    pub fn attendance_service(mut self, attendance_service: Arc<AttendanceService>) -> Self {
+        self.attendance_service = Some(attendance_service);
+        self
+    }
+    pub fn auth_service(mut self, auth_service: Arc<AuthService>) -> Self {
+        self.auth_service = Some(auth_service);
+        self
+    }
+    pub fn group_service(mut self, group_service: Arc<GroupService>) -> Self {
+        self.group_service = Some(group_service);
+        self
+    }
+    pub fn household_service(mut self, household_service: Arc<HouseholdService>) -> Self {
+        self.household_service = Some(household_service);
+        self
+    }
+
+    pub fn import_service(mut self, import_service: Arc<ImportService>) -> Self {
+        self.import_service = Some(import_service);
+        self
+    }
+
+    pub fn service_service(mut self, service_service: Arc<ServiceService>) -> Self {
+        self.service_service = Some(service_service);
+        self
+    }
+
+    pub fn build(self) -> AppState {
+        AppState {
+            config: self.config,
+            user_service: self.user_service.expect("User service not found"),
+            member_service: self.member_service.expect("Member service not found"),
+            attendance_service: self
+                .attendance_service
+                .expect("Attendance service not found"),
+            auth_service: self.auth_service.expect("Auth service not found"),
+            group_service: self.group_service.expect("Group service not found"),
+            household_service: self.household_service.expect("Household service not found"),
+            import_service: self.import_service.expect("Import service not found"),
+            service_service: self.service_service.expect("Service service not found"),
         }
     }
 }

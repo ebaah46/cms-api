@@ -157,6 +157,7 @@ pub struct UpdateMemberDetailRequest {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MemberDetailResponse {
+    pub member_id: Uuid,
     pub communicant: bool,
     pub place_of_birth: Option<String>,
     pub region_of_birth: Option<String>,
@@ -188,6 +189,7 @@ pub struct MemberDetailResponse {
 impl From<MemberDetail> for MemberDetailResponse {
     fn from(value: MemberDetail) -> Self {
         MemberDetailResponse {
+            member_id: value.member_id,
             communicant: value.communicant,
             place_of_birth: value.place_of_birth,
             region_of_birth: value.region_of_birth,

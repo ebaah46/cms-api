@@ -17,6 +17,16 @@ pub struct GroupService {
 }
 
 impl GroupService {
+    pub fn new(
+        group_repo: Arc<dyn GroupRepository>,
+        member_repo: Arc<dyn MemberRepository>,
+    ) -> Self {
+        Self {
+            group_repo,
+            member_repo,
+        }
+    }
+
     pub async fn create(&self, req: CreateGroupRequest) -> Result<GroupResponse, AppError> {
         let group = self
             .group_repo

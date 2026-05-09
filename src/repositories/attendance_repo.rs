@@ -55,6 +55,11 @@ pub struct PostgresAttendanceRepository {
     pool: PgPool,
 }
 
+impl PostgresAttendanceRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
 #[async_trait]
 impl AttendanceRepository for PostgresAttendanceRepository {
     async fn check_in(

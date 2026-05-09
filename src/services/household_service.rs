@@ -16,6 +16,15 @@ pub struct HouseholdService {
 }
 
 impl HouseholdService {
+    pub fn new(
+        household_repo: Arc<dyn HouseholdRepository>,
+        member_repo: Arc<dyn MemberRepository>,
+    ) -> Self {
+        Self {
+            household_repo,
+            member_repo,
+        }
+    }
     pub async fn create(&self, req: CreateHouseholdRequest) -> Result<HouseholdResponse, AppError> {
         let household = self
             .household_repo

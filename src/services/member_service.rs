@@ -10,15 +10,17 @@ use crate::dto::member_dto::{
 };
 use crate::errors::AppError;
 use crate::repositories::MemberRepository;
-use crate::repositories::member_repo::{
-    CreateMemberParams, PostgresMemberRepository, UpdateMemberParams,
-};
+use crate::repositories::member_repo::{CreateMemberParams, UpdateMemberParams};
 
 pub struct MemberService {
     repo: Arc<dyn MemberRepository>,
 }
 
 impl MemberService {
+    pub fn new(repo: Arc<dyn MemberRepository>) -> Self {
+        Self { repo }
+    }
+
     pub async fn create(&self, req: CreateMemberRequest) -> Result<MemberResponse, AppError> {
         let membership_status = req.membership_status.as_deref().unwrap_or("active");
 

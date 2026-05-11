@@ -9,8 +9,10 @@ pub mod routes;
 pub mod services;
 
 use config::Config;
+use moka::future::{Cache, CacheBuilder};
 use sqlx::PgPool;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::{
     repositories::{
@@ -156,5 +158,42 @@ impl RepositoryManager {
 
     pub fn get_refresh_token_repo(&self) -> Arc<dyn RefreshTokenRepository> {
         Arc::new(PostgresRefreshTokenRepository::new(self.pool.clone()))
+    }
+}
+
+pub trait Cacheable: Send + Sync {
+    fn cache_key(&self) -> String;
+}
+
+#[derive(Clone)]
+pub struct CacheManager<T> {
+    inner: Cache<String, T>,
+}
+
+impl<T: Cacheable + Clone + 'static> CacheManager<T> {
+    pub fn new(max_capacity: u64, ttl_secs: u64) -> Self {
+        let cache = Cache::builder()
+            .max_capacity(max_capacity)
+            .time_to_live(Duration::from_secs(ttl_secs))
+            .build();
+        Self { inner: cache }
+    }
+
+    pub async fn get_entry<I>(&self, key: I) -> Option<T>
+    where
+        I: Into<String>,
+    {
+        self.inner.get(&key.into()).await
+    }
+
+    pub async fn set_entry<I, F, Fut, E>(&self, key: I, func: F) -> Result<T, E>
+    where
+        I: Into<String>,
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<T, E>>,
+    {
+        let entry = func().await?;
+        self.inner.insert(key.into(), entry.clone()).await;
+        Ok(entry)
     }
 }

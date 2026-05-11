@@ -356,6 +356,7 @@ async fn test_get_member_detail() {
 
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
     dbg!(&json);
+    assert_eq!(json["member_id"], member_id);
     assert_eq!(json["communicant"], false);
     assert_eq!(json["marital_status"], "single");
     assert_eq!(json["education_level"], "none");

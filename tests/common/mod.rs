@@ -27,7 +27,7 @@ pub struct TestApp {
 
 impl TestApp {
     pub async fn new() -> Self {
-        // dotenvy::dotenv().ok();
+        dotenvy::dotenv().ok();
 
         let config = Config {
             database_url: std::env::var("DATABASE_URL").unwrap_or_else(|_| {
@@ -52,7 +52,7 @@ impl TestApp {
             .expect("Failed to run migrations");
 
         // Create repositories needed in backend
-        let repo_manager = RepositoryManager::new(pool);
+        let repo_manager = RepositoryManager::new(pool.clone());
         let attendance_repo = repo_manager.get_attendance_repo();
         let member_repo = repo_manager.get_member_repo();
         let service_repo = repo_manager.get_service_repo();

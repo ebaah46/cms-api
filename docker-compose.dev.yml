@@ -12,13 +12,15 @@ services:
       - /app/node_modules
     depends_on:
       - api
+    networks:
+      - cms-net
 
   api:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     environment:
       - DATABASE_URL=
       - JWT_SECRET=dev-secret-key-not-for-production
@@ -28,6 +30,7 @@ services:
       - SERVER_PORT=3000
       - CORS_ORIGINS=http://localhost:5173,http://localhost:3000
       - RUST_LOG=cms_api=debug,tower_http=debug
+      - RUST_BACKTRACE=1
     volumes:
       - .:/app
       - cargo_cache:/usr/local/cargo/registry
@@ -35,6 +38,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - cms-net
 
   db:
     image: postgres:16-alpine
@@ -49,8 +54,25 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - cms-net
+
+  gateway:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+    networks:
+      - cms-net
 
 volumes:
   postgres_data_dev:
   cargo_cache:
   target_cache:
+
+networks:
+  cms-net:
+    driver: bridge

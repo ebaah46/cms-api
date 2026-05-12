@@ -8,8 +8,9 @@ use crate::errors::AppError;
 use crate::models::user::UserRole;
 use crate::repositories::UserRepository;
 use crate::services::auth_service::AuthService;
+use crate::{CacheManager, Cacheable};
 
-pub struct UserService {
+struct UserService {
     repo: Arc<dyn UserRepository>,
 }
 
@@ -20,7 +21,7 @@ impl UserService {
     }
 
     /// Creates the initial admin user. Only works when no users exist in the database.
-    pub async fn setup(&self, req: SetupRequest) -> Result<SetupResponse, AppError> {
+    async fn setup(&self, req: SetupRequest) -> Result<SetupResponse, AppError> {
         // Check if any users already exist
         let user_count = self.repo.count().await?;
         if user_count > 0 {
@@ -41,7 +42,7 @@ impl UserService {
         })
     }
 
-    pub async fn create(&self, req: CreateUserRequest) -> Result<UserResponse, AppError> {
+    async fn create(&self, req: CreateUserRequest) -> Result<UserResponse, AppError> {
         // Check if email already exists
         if self.repo.find_by_email(&req.email).await?.is_some() {
             return Err(AppError::Conflict("Email already exists".to_string()));
@@ -58,7 +59,7 @@ impl UserService {
         Ok(user.into())
     }
 
-    pub async fn find_by_id(&self, id: Uuid) -> Result<UserResponse, AppError> {
+    async fn find_by_id(&self, id: Uuid) -> Result<UserResponse, AppError> {
         let user = self
             .repo
             .find_by_id(id)
@@ -68,7 +69,7 @@ impl UserService {
         Ok(user.into())
     }
 
-    pub async fn find_all(
+    async fn find_all(
         &self,
         pagination: PaginationParams,
     ) -> Result<ListResponse<UserResponse>, AppError> {
@@ -86,7 +87,7 @@ impl UserService {
         })
     }
 
-    pub async fn update(&self, id: Uuid, req: UpdateUserRequest) -> Result<UserResponse, AppError> {
+    async fn update(&self, id: Uuid, req: UpdateUserRequest) -> Result<UserResponse, AppError> {
         // Check if user exists
         self.repo
             .find_by_id(id)
@@ -121,10 +122,59 @@ impl UserService {
         Ok(user.into())
     }
 
-    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
+    async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         if !self.repo.delete(id).await? {
             return Err(AppError::NotFound("User not found".to_string()));
         }
         Ok(())
+    }
+}
+
+pub struct CachedUserService {
+    inner: UserService,
+    cache: CacheManager<UserResponse>,
+}
+
+impl CachedUserService {
+    const MAX_CACHE_CAPACITY: u64 = 1000; // number of users cache can store
+    const CACHE_TIME_TO_LIVE_SECS: u64 = 600; // number of secs entry can live until eviction based on strategy
+
+    pub fn new(repo: Arc<dyn UserRepository>) -> Self {
+        Self {
+            inner: UserService::new(repo),
+            cache: CacheManager::new(Self::MAX_CACHE_CAPACITY, Self::CACHE_TIME_TO_LIVE_SECS),
+        }
+    }
+
+    pub async fn setup(&self, req: SetupRequest) -> Result<SetupResponse, AppError> {
+        self.inner.setup(req).await
+    }
+
+    pub async fn create(&self, req: CreateUserRequest) -> Result<UserResponse, AppError> {
+        self.inner.create(req).await
+    }
+
+    pub async fn find_by_id(&self, id: Uuid) -> Result<UserResponse, AppError> {
+        let key = UserResponse::cache_key_from_id(id);
+        if let Some(val) = self.cache.get_entry(&key).await {
+            return Ok(val);
+        }
+        let closure = move || self.inner.find_by_id(id);
+        self.cache.set_entry(key, closure).await
+    }
+
+    pub async fn find_all(
+        &self,
+        pagination: PaginationParams,
+    ) -> Result<ListResponse<UserResponse>, AppError> {
+        self.inner.find_all(pagination).await
+    }
+
+    pub async fn update(&self, id: Uuid, req: UpdateUserRequest) -> Result<UserResponse, AppError> {
+        self.inner.update(id, req).await
+    }
+
+    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
+        self.inner.delete(id).await
     }
 }

@@ -3,7 +3,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::models::user::{User, UserRole};
+use crate::{
+    Cacheable,
+    models::user::{User, UserRole},
+};
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct CreateUserRequest {
@@ -23,7 +26,7 @@ pub struct UpdateUserRequest {
     pub role: Option<UserRole>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct UserResponse {
     pub id: Uuid,
     pub email: String,
@@ -42,5 +45,18 @@ impl From<User> for UserResponse {
             created_at: user.created_at,
             updated_at: user.updated_at,
         }
+    }
+}
+
+impl Cacheable for UserResponse {
+    fn cache_key(&self) -> String {
+        format!("user:{}", self.id)
+    }
+
+    fn cache_key_from_id<I>(id: I) -> String
+    where
+        I: Into<String>,
+    {
+        format!("user:{}", id.into())
     }
 }

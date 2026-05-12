@@ -13,7 +13,7 @@ use cms_api::{
         attendance_service::AttendanceService, auth_service::AuthService,
         group_service::GroupService, household_service::HouseholdService,
         import_service::ImportService, member_service::MemberService,
-        service_service::ServiceService, user_service::UserService,
+        service_service::ServiceService, user_service::CachedUserService,
     },
 };
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -83,7 +83,7 @@ impl TestApp {
             )))
             .service_service(Arc::new(ServiceService::new(service_repo.clone())))
             .import_service(Arc::new(ImportService::new(member_repo.clone())))
-            .user_service(Arc::new(UserService::new(user_repo.clone())))
+            .user_service(Arc::new(CachedUserService::new(user_repo.clone())))
             .build();
 
         let app = Router::new()

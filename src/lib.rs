@@ -25,14 +25,14 @@ use crate::{
         attendance_service::AttendanceService, auth_service::AuthService,
         group_service::GroupService, household_service::HouseholdService,
         import_service::ImportService, member_service::MemberService,
-        service_service::ServiceService, user_service::UserService,
+        service_service::ServiceService, user_service::CachedUserService,
     },
 };
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
-    pub user_service: Arc<UserService>,
+    pub user_service: Arc<CachedUserService>,
     pub member_service: Arc<MemberService>,
     pub attendance_service: Arc<AttendanceService>,
     pub auth_service: Arc<AuthService>,
@@ -44,7 +44,7 @@ pub struct AppState {
 
 pub struct AppStateBuilder {
     config: Arc<Config>,
-    user_service: Option<Arc<UserService>>,
+    user_service: Option<Arc<CachedUserService>>,
     member_service: Option<Arc<MemberService>>,
     attendance_service: Option<Arc<AttendanceService>>,
     auth_service: Option<Arc<AuthService>>,
@@ -69,7 +69,7 @@ impl AppStateBuilder {
         }
     }
 
-    pub fn user_service(mut self, user_service: Arc<UserService>) -> Self {
+    pub fn user_service(mut self, user_service: Arc<CachedUserService>) -> Self {
         self.user_service = Some(user_service);
         self
     }
@@ -163,6 +163,10 @@ impl RepositoryManager {
 
 pub trait Cacheable: Send + Sync {
     fn cache_key(&self) -> String;
+
+    fn cache_key_from_id<I>(id: I) -> String
+    where
+        I: Into<String>;
 }
 
 #[derive(Clone)]

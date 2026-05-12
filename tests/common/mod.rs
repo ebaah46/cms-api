@@ -12,7 +12,7 @@ use cms_api::{
     services::{
         attendance_service::AttendanceService, auth_service::AuthService,
         group_service::GroupService, household_service::HouseholdService,
-        import_service::ImportService, member_service::MemberService,
+        import_service::ImportService, member_service::CachedMemberService,
         service_service::ServiceService, user_service::CachedUserService,
     },
 };
@@ -68,7 +68,7 @@ impl TestApp {
                 member_repo.clone(),
                 service_repo.clone(),
             )))
-            .member_service(Arc::new(MemberService::new(member_repo.clone())))
+            .member_service(Arc::new(CachedMemberService::new(member_repo.clone())))
             .auth_service(Arc::new(AuthService::new(
                 user_repo.clone(),
                 refresh_token_repo.clone(),

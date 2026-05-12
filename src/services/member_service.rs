@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::dto::ListResponse;
@@ -11,17 +10,21 @@ use crate::dto::member_dto::{
 use crate::errors::AppError;
 use crate::repositories::MemberRepository;
 use crate::repositories::member_repo::{CreateMemberParams, UpdateMemberParams};
+use crate::{CacheManager, Cacheable};
 
-pub struct MemberService {
+struct MemberService {
     repo: Arc<dyn MemberRepository>,
 }
 
 impl MemberService {
-    pub fn new(repo: Arc<dyn MemberRepository>) -> Self {
+    fn new(repo: Arc<dyn MemberRepository>) -> Self {
         Self { repo }
     }
 
-    pub async fn create(&self, req: CreateMemberRequest) -> Result<MemberResponse, AppError> {
+    async fn create(
+        &self,
+        req: CreateMemberRequest,
+    ) -> Result<(MemberResponse, MemberDetailResponse), AppError> {
         let membership_status = req.membership_status.as_deref().unwrap_or("active");
 
         let member = self
@@ -44,11 +47,11 @@ impl MemberService {
         // create associated member detail
         let mut member_detail = CreateMemberParams::default();
         member_detail.member_id = member.id;
-        let _ = self.repo.create_detail(member_detail).await?;
-        Ok(member.into())
+        let m_detail = self.repo.create_detail(member_detail).await?;
+        Ok((member.into(), m_detail.into()))
     }
 
-    pub async fn find_by_id(&self, id: Uuid) -> Result<MemberResponse, AppError> {
+    async fn find_by_id(&self, id: Uuid) -> Result<MemberResponse, AppError> {
         let member = self
             .repo
             .find_by_id(id)
@@ -58,7 +61,7 @@ impl MemberService {
         Ok(member.into())
     }
 
-    pub async fn find_detail_by_id(&self, id: Uuid) -> Result<MemberDetailResponse, AppError> {
+    async fn find_detail_by_id(&self, id: Uuid) -> Result<MemberDetailResponse, AppError> {
         let member = self
             .repo
             .find_detail_by_id(id)
@@ -68,10 +71,7 @@ impl MemberService {
         Ok(member.into())
     }
 
-    pub async fn find_all(
-        &self,
-        query: MemberQuery,
-    ) -> Result<ListResponse<MemberResponse>, AppError> {
+    async fn find_all(&self, query: MemberQuery) -> Result<ListResponse<MemberResponse>, AppError> {
         let page = query.page.unwrap_or(1).max(1);
         let limit = query.limit.unwrap_or(20).clamp(1, 100);
         let offset = (page - 1) * limit;
@@ -104,11 +104,7 @@ impl MemberService {
         })
     }
 
-    pub async fn update(
-        &self,
-        id: Uuid,
-        req: UpdateMemberRequest,
-    ) -> Result<MemberResponse, AppError> {
+    async fn update(&self, id: Uuid, req: UpdateMemberRequest) -> Result<MemberResponse, AppError> {
         let member = self
             .repo
             .update(
@@ -131,7 +127,7 @@ impl MemberService {
         Ok(member.into())
     }
 
-    pub async fn update_detail(
+    async fn update_detail(
         &self,
         id: Uuid,
         req: UpdateMemberDetailRequest,
@@ -170,10 +166,99 @@ impl MemberService {
         Ok(member.into())
     }
 
-    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
+    async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         if !self.repo.soft_delete(id).await? {
             return Err(AppError::NotFound("Member not found".to_string()));
         }
         Ok(())
+    }
+}
+
+pub struct CachedMemberService {
+    inner: MemberService,
+    member_cache: CacheManager<MemberResponse>,
+    member_detail_cache: CacheManager<MemberDetailResponse>,
+}
+
+impl CachedMemberService {
+    const MAX_CACHE_CAPACITY: u64 = 1000; // number of members cache can store
+    const CACHE_TIME_TO_LIVE_SECS: u64 = 600; // number of secs entry can live until eviction based on strategy
+
+    pub fn new(repo: Arc<dyn MemberRepository>) -> Self {
+        Self {
+            inner: MemberService::new(repo),
+            member_cache: CacheManager::new(
+                Self::MAX_CACHE_CAPACITY,
+                Self::CACHE_TIME_TO_LIVE_SECS,
+            ),
+            member_detail_cache: CacheManager::new(
+                Self::MAX_CACHE_CAPACITY,
+                Self::CACHE_TIME_TO_LIVE_SECS,
+            ),
+        }
+    }
+
+    pub async fn create(&self, req: CreateMemberRequest) -> Result<MemberResponse, AppError> {
+        let (member, member_detail) = self.inner.create(req).await?;
+        let key = MemberResponse::cache_key_from_id(member.id);
+        self.member_cache.set_entry(key, member.clone()).await;
+
+        let key = MemberDetailResponse::cache_key_from_id(member_detail.member_id);
+        self.member_detail_cache.set_entry(key, member_detail).await;
+        Ok(member)
+    }
+
+    pub async fn find_by_id(&self, id: Uuid) -> Result<MemberResponse, AppError> {
+        let key = MemberResponse::cache_key_from_id(id);
+        if let Some(member) = self.member_cache.get_entry(&key).await {
+            return Ok(member);
+        }
+        self.inner.find_by_id(id).await
+    }
+
+    pub async fn find_detail_by_id(&self, id: Uuid) -> Result<MemberDetailResponse, AppError> {
+        let key = MemberDetailResponse::cache_key_from_id(id);
+        if let Some(member_detail) = self.member_detail_cache.get_entry(&key).await {
+            return Ok(member_detail);
+        }
+        self.inner.find_detail_by_id(id).await
+    }
+
+    pub async fn find_all(
+        &self,
+        query: MemberQuery,
+    ) -> Result<ListResponse<MemberResponse>, AppError> {
+        self.inner.find_all(query).await
+    }
+
+    pub async fn update(
+        &self,
+        id: Uuid,
+        req: UpdateMemberRequest,
+    ) -> Result<MemberResponse, AppError> {
+        let key = MemberResponse::cache_key_from_id(id);
+        self.member_cache.invalidate_cache(&key).await;
+        let closure = move || self.inner.update(id, req);
+
+        self.member_cache.set_entry_with_method(key, closure).await
+    }
+
+    pub async fn update_detail(
+        &self,
+        id: Uuid,
+        req: UpdateMemberDetailRequest,
+    ) -> Result<MemberDetailResponse, AppError> {
+        let key = MemberDetailResponse::cache_key_from_id(id);
+        self.member_detail_cache.invalidate_cache(&key).await;
+        let closure = move || self.inner.update_detail(id, req);
+        self.member_detail_cache
+            .set_entry_with_method(key, closure)
+            .await
+    }
+
+    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
+        let key = MemberResponse::cache_key_from_id(id);
+        self.member_cache.invalidate_cache(key).await;
+        self.inner.delete(id).await
     }
 }

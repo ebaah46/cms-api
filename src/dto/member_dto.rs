@@ -3,7 +3,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::models::member::{Member, MemberDetail};
+use crate::{
+    Cacheable,
+    models::member::{Member, MemberDetail},
+};
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct CreateMemberRequest {
@@ -65,7 +68,7 @@ pub struct UpdateMemberRequest {
     pub household_role: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct MemberResponse {
     pub id: Uuid,
     pub first_name: String,
@@ -101,6 +104,19 @@ impl From<Member> for MemberResponse {
             created_at: m.created_at,
             updated_at: m.updated_at,
         }
+    }
+}
+
+impl Cacheable for MemberResponse {
+    fn cache_key(&self) -> String {
+        format!("member:{}", self.id)
+    }
+
+    fn cache_key_from_id<I>(id: I) -> String
+    where
+        I: Into<String>,
+    {
+        format!("member:{}", id.into())
     }
 }
 
@@ -217,5 +233,18 @@ impl From<MemberDetail> for MemberDetailResponse {
             created_at: value.created_at,
             updated_at: value.updated_at,
         }
+    }
+}
+
+impl Cacheable for MemberDetailResponse {
+    fn cache_key(&self) -> String {
+        format!("member_detail:{}", self.member_id)
+    }
+
+    fn cache_key_from_id<I>(id: I) -> String
+    where
+        I: Into<String>,
+    {
+        format!("member_detail:{}", id.into())
     }
 }

@@ -9,7 +9,7 @@ pub mod routes;
 pub mod services;
 
 use config::Config;
-use moka::future::{Cache, CacheBuilder};
+use moka::future::Cache;
 use sqlx::PgPool;
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,7 +24,7 @@ use crate::{
     services::{
         attendance_service::AttendanceService, auth_service::AuthService,
         group_service::GroupService, household_service::HouseholdService,
-        import_service::ImportService, member_service::MemberService,
+        import_service::ImportService, member_service::CachedMemberService,
         service_service::ServiceService, user_service::CachedUserService,
     },
 };
@@ -33,7 +33,7 @@ use crate::{
 pub struct AppState {
     pub config: Arc<Config>,
     pub user_service: Arc<CachedUserService>,
-    pub member_service: Arc<MemberService>,
+    pub member_service: Arc<CachedMemberService>,
     pub attendance_service: Arc<AttendanceService>,
     pub auth_service: Arc<AuthService>,
     pub group_service: Arc<GroupService>,
@@ -45,7 +45,7 @@ pub struct AppState {
 pub struct AppStateBuilder {
     config: Arc<Config>,
     user_service: Option<Arc<CachedUserService>>,
-    member_service: Option<Arc<MemberService>>,
+    member_service: Option<Arc<CachedMemberService>>,
     attendance_service: Option<Arc<AttendanceService>>,
     auth_service: Option<Arc<AuthService>>,
     group_service: Option<Arc<GroupService>>,
@@ -74,7 +74,7 @@ impl AppStateBuilder {
         self
     }
 
-    pub fn member_service(mut self, member_service: Arc<MemberService>) -> Self {
+    pub fn member_service(mut self, member_service: Arc<CachedMemberService>) -> Self {
         self.member_service = Some(member_service);
         self
     }
@@ -190,7 +190,7 @@ impl<T: Cacheable + Clone + 'static> CacheManager<T> {
         self.inner.get(&key.into()).await
     }
 
-    pub async fn set_entry<I, F, Fut, E>(&self, key: I, func: F) -> Result<T, E>
+    pub async fn set_entry_with_method<I, F, Fut, E>(&self, key: I, func: F) -> Result<T, E>
     where
         I: Into<String>,
         F: FnOnce() -> Fut,
@@ -199,5 +199,19 @@ impl<T: Cacheable + Clone + 'static> CacheManager<T> {
         let entry = func().await?;
         self.inner.insert(key.into(), entry.clone()).await;
         Ok(entry)
+    }
+
+    pub async fn set_entry<I>(&self, key: I, value: T)
+    where
+        I: Into<String>,
+    {
+        self.inner.insert(key.into(), value).await
+    }
+
+    pub async fn invalidate_cache<I>(&self, key: I)
+    where
+        I: Into<String>,
+    {
+        self.inner.invalidate(&key.into()).await
     }
 }

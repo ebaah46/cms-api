@@ -136,7 +136,7 @@ pub struct CachedUserService {
 }
 
 impl CachedUserService {
-    const MAX_CACHE_CAPACITY: u64 = 1000; // number of users cache can store
+    const MAX_CACHE_CAPACITY: u64 = 15; // number of users cache can store
     const CACHE_TIME_TO_LIVE_SECS: u64 = 600; // number of secs entry can live until eviction based on strategy
 
     pub fn new(repo: Arc<dyn UserRepository>) -> Self {
@@ -160,7 +160,7 @@ impl CachedUserService {
             return Ok(val);
         }
         let closure = move || self.inner.find_by_id(id);
-        self.cache.set_entry(key, closure).await
+        self.cache.set_entry_with_method(key, closure).await
     }
 
     pub async fn find_all(

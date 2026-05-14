@@ -259,6 +259,8 @@ impl CachedMemberService {
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         let key = MemberResponse::cache_key_from_id(id);
         self.member_cache.invalidate_cache(key).await;
+        let key = MemberDetailResponse::cache_key_from_id(id);
+        self.member_detail_cache.invalidate_cache(key).await;
         self.inner.delete(id).await
     }
 }

@@ -7,17 +7,18 @@ use crate::dto::service_dto::{
 };
 use crate::errors::AppError;
 use crate::repositories::ServiceRepository;
+use crate::{CacheManager, Cacheable};
 
 pub struct ServiceService {
     repo: Arc<dyn ServiceRepository>,
 }
 
 impl ServiceService {
-    pub fn new(repo: Arc<dyn ServiceRepository>) -> Self {
+    fn new(repo: Arc<dyn ServiceRepository>) -> Self {
         Self { repo }
     }
 
-    pub async fn create(&self, req: CreateServiceRequest) -> Result<ServiceResponse, AppError> {
+    async fn create(&self, req: CreateServiceRequest) -> Result<ServiceResponse, AppError> {
         let service = self
             .repo
             .create(
@@ -31,7 +32,7 @@ impl ServiceService {
         Ok(service.into())
     }
 
-    pub async fn find_by_id(&self, id: Uuid) -> Result<ServiceResponse, AppError> {
+    async fn find_by_id(&self, id: Uuid) -> Result<ServiceResponse, AppError> {
         let service = self
             .repo
             .find_by_id(id)
@@ -41,7 +42,7 @@ impl ServiceService {
         Ok(service.into())
     }
 
-    pub async fn find_all(
+    async fn find_all(
         &self,
         query: ServiceQuery,
     ) -> Result<ListResponse<ServiceResponse>, AppError> {
@@ -73,7 +74,7 @@ impl ServiceService {
         })
     }
 
-    pub async fn update(
+    async fn update(
         &self,
         id: Uuid,
         req: UpdateServiceRequest,
@@ -93,10 +94,67 @@ impl ServiceService {
         Ok(service.into())
     }
 
-    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
+    async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         if !self.repo.delete(id).await? {
             return Err(AppError::NotFound("Service not found".to_string()));
         }
         Ok(())
+    }
+}
+
+pub struct CachedServiceService {
+    inner: ServiceService,
+    cache: CacheManager<ServiceResponse>,
+}
+
+impl CachedServiceService {
+    const MAX_CACHE_CAPACITY: u64 = 10; // number of services cache can store
+    const CACHE_TIME_TO_LIVE_SECS: u64 = 600; // number of secs entry can live until eviction based on strategy
+
+    pub fn new(repo: Arc<dyn ServiceRepository>) -> Self {
+        Self {
+            inner: ServiceService::new(repo),
+            cache: CacheManager::new(Self::MAX_CACHE_CAPACITY, Self::CACHE_TIME_TO_LIVE_SECS),
+        }
+    }
+
+    pub async fn create(&self, req: CreateServiceRequest) -> Result<ServiceResponse, AppError> {
+        let service = self.inner.create(req).await?;
+        let key = ServiceResponse::cache_key_from_id(service.id);
+        self.cache.set_entry(key, service.clone()).await;
+        Ok(service)
+    }
+
+    pub async fn find_by_id(&self, id: Uuid) -> Result<ServiceResponse, AppError> {
+        let key = ServiceResponse::cache_key_from_id(id);
+        if let Some(service) = self.cache.get_entry(&key).await {
+            return Ok(service);
+        }
+        let closure = move || self.inner.find_by_id(id);
+        self.cache.set_entry_with_method(key, closure).await
+    }
+
+    pub async fn find_all(
+        &self,
+        query: ServiceQuery,
+    ) -> Result<ListResponse<ServiceResponse>, AppError> {
+        self.inner.find_all(query).await
+    }
+
+    pub async fn update(
+        &self,
+        id: Uuid,
+        req: UpdateServiceRequest,
+    ) -> Result<ServiceResponse, AppError> {
+        let key = ServiceResponse::cache_key_from_id(id);
+        self.cache.invalidate_cache(&key).await;
+        let closure = move || self.inner.update(id, req);
+        self.cache.set_entry_with_method(key, closure).await
+    }
+
+    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
+        let key = ServiceResponse::cache_key_from_id(id);
+        self.cache.invalidate_cache(&key).await;
+        self.inner.delete(id).await
     }
 }

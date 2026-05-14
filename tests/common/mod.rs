@@ -13,7 +13,7 @@ use cms_api::{
         attendance_service::AttendanceService, auth_service::AuthService,
         group_service::GroupService, household_service::HouseholdService,
         import_service::ImportService, member_service::CachedMemberService,
-        service_service::ServiceService, user_service::CachedUserService,
+        service_service::CachedServiceService, user_service::CachedUserService,
     },
 };
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -81,7 +81,7 @@ impl TestApp {
                 household_repo.clone(),
                 member_repo.clone(),
             )))
-            .service_service(Arc::new(ServiceService::new(service_repo.clone())))
+            .service_service(Arc::new(CachedServiceService::new(service_repo.clone())))
             .import_service(Arc::new(ImportService::new(member_repo.clone())))
             .user_service(Arc::new(CachedUserService::new(user_repo.clone())))
             .build();

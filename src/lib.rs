@@ -25,7 +25,7 @@ use crate::{
         attendance_service::AttendanceService, auth_service::AuthService,
         group_service::GroupService, household_service::HouseholdService,
         import_service::ImportService, member_service::CachedMemberService,
-        service_service::ServiceService, user_service::CachedUserService,
+        service_service::CachedServiceService, user_service::CachedUserService,
     },
 };
 
@@ -39,7 +39,7 @@ pub struct AppState {
     pub group_service: Arc<GroupService>,
     pub household_service: Arc<HouseholdService>,
     pub import_service: Arc<ImportService>,
-    pub service_service: Arc<ServiceService>,
+    pub service_service: Arc<CachedServiceService>,
 }
 
 pub struct AppStateBuilder {
@@ -51,7 +51,7 @@ pub struct AppStateBuilder {
     group_service: Option<Arc<GroupService>>,
     household_service: Option<Arc<HouseholdService>>,
     import_service: Option<Arc<ImportService>>,
-    service_service: Option<Arc<ServiceService>>,
+    service_service: Option<Arc<CachedServiceService>>,
 }
 
 impl AppStateBuilder {
@@ -101,7 +101,7 @@ impl AppStateBuilder {
         self
     }
 
-    pub fn service_service(mut self, service_service: Arc<ServiceService>) -> Self {
+    pub fn service_service(mut self, service_service: Arc<CachedServiceService>) -> Self {
         self.service_service = Some(service_service);
         self
     }

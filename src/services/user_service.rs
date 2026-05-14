@@ -171,10 +171,15 @@ impl CachedUserService {
     }
 
     pub async fn update(&self, id: Uuid, req: UpdateUserRequest) -> Result<UserResponse, AppError> {
-        self.inner.update(id, req).await
+        let key = UserResponse::cache_key_from_id(id);
+        self.cache.invalidate_cache(&key).await;
+        let closure = move || self.inner.update(id, req);
+        self.cache.set_entry_with_method(key, closure).await
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
+        let key = UserResponse::cache_key_from_id(id);
+        self.cache.invalidate_cache(key).await;
         self.inner.delete(id).await
     }
 }

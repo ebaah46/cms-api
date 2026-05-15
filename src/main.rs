@@ -12,7 +12,7 @@ use cms_api::{
     config::Config,
     routes,
     services::{
-        attendance_service::AttendanceService, auth_service::AuthService,
+        attendance_service::CachedAttendanceService, auth_service::AuthService,
         group_service::GroupService, household_service::HouseholdService,
         import_service::ImportService, member_service::CachedMemberService,
         service_service::CachedServiceService, user_service::CachedUserService,
@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create app state
     let state = AppStateBuilder::new(config.clone())
-        .attendance_service(Arc::new(AttendanceService::new(
+        .attendance_service(Arc::new(CachedAttendanceService::new(
             attendance_repo.clone(),
             member_repo.clone(),
             service_repo.clone(),

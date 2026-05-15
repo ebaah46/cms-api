@@ -9,7 +9,7 @@ use crate::errors::AppError;
 use crate::repositories::ServiceRepository;
 use crate::{CacheManager, Cacheable};
 
-pub struct ServiceService {
+struct ServiceService {
     repo: Arc<dyn ServiceRepository>,
 }
 

@@ -22,7 +22,7 @@ use crate::{
         PostgresUserRepository, RefreshTokenRepository, ServiceRepository, UserRepository,
     },
     services::{
-        attendance_service::AttendanceService, auth_service::AuthService,
+        attendance_service::CachedAttendanceService, auth_service::AuthService,
         group_service::GroupService, household_service::HouseholdService,
         import_service::ImportService, member_service::CachedMemberService,
         service_service::CachedServiceService, user_service::CachedUserService,
@@ -34,7 +34,7 @@ pub struct AppState {
     pub config: Arc<Config>,
     pub user_service: Arc<CachedUserService>,
     pub member_service: Arc<CachedMemberService>,
-    pub attendance_service: Arc<AttendanceService>,
+    pub attendance_service: Arc<CachedAttendanceService>,
     pub auth_service: Arc<AuthService>,
     pub group_service: Arc<GroupService>,
     pub household_service: Arc<HouseholdService>,
@@ -46,7 +46,7 @@ pub struct AppStateBuilder {
     config: Arc<Config>,
     user_service: Option<Arc<CachedUserService>>,
     member_service: Option<Arc<CachedMemberService>>,
-    attendance_service: Option<Arc<AttendanceService>>,
+    attendance_service: Option<Arc<CachedAttendanceService>>,
     auth_service: Option<Arc<AuthService>>,
     group_service: Option<Arc<GroupService>>,
     household_service: Option<Arc<HouseholdService>>,
@@ -79,7 +79,7 @@ impl AppStateBuilder {
         self
     }
 
-    pub fn attendance_service(mut self, attendance_service: Arc<AttendanceService>) -> Self {
+    pub fn attendance_service(mut self, attendance_service: Arc<CachedAttendanceService>) -> Self {
         self.attendance_service = Some(attendance_service);
         self
     }

@@ -10,15 +10,16 @@ use crate::errors::AppError;
 use crate::repositories::AttendanceRepository;
 use crate::repositories::MemberRepository;
 use crate::repositories::ServiceRepository;
+use crate::{CacheManager, Cacheable};
 
-pub struct AttendanceService {
+struct AttendanceService {
     attendance_repo: Arc<dyn AttendanceRepository>,
     member_repo: Arc<dyn MemberRepository>,
     service_repo: Arc<dyn ServiceRepository>,
 }
 
 impl AttendanceService {
-    pub fn new(
+    fn new(
         attendance_repo: Arc<dyn AttendanceRepository>,
         member_repo: Arc<dyn MemberRepository>,
         service_repo: Arc<dyn ServiceRepository>,
@@ -30,7 +31,7 @@ impl AttendanceService {
         }
     }
 
-    pub async fn check_in(
+    async fn check_in(
         &self,
         member_id: Uuid,
         service_id: Uuid,
@@ -68,7 +69,7 @@ impl AttendanceService {
         Ok(attendance.into())
     }
 
-    pub async fn bulk_check_in(
+    async fn bulk_check_in(
         &self,
         service_id: Uuid,
         member_ids: Vec<Uuid>,
@@ -120,7 +121,7 @@ impl AttendanceService {
         })
     }
 
-    pub async fn get_service_attendance(
+    async fn get_service_attendance(
         &self,
         service_id: Uuid,
         page: Option<i32>,
@@ -165,7 +166,7 @@ impl AttendanceService {
         })
     }
 
-    pub async fn get_member_attendance(
+    async fn get_member_attendance(
         &self,
         member_id: Uuid,
         page: Option<i32>,
@@ -196,5 +197,78 @@ impl AttendanceService {
             ));
         }
         Ok(())
+    }
+}
+
+pub struct CachedAttendanceService {
+    inner: AttendanceService,
+    cache: CacheManager<AttendanceResponse>,
+}
+
+impl CachedAttendanceService {
+    const MAX_CACHE_CAPACITY: u64 = 1000; // number of attendances cache can store
+    const CACHE_TIME_TO_LIVE_SECS: u64 = 600; // number of secs entry can live until eviction based on strategy
+
+    pub fn new(
+        attendance_repo: Arc<dyn AttendanceRepository>,
+        member_repo: Arc<dyn MemberRepository>,
+        service_repo: Arc<dyn ServiceRepository>,
+    ) -> Self {
+        Self {
+            inner: AttendanceService::new(attendance_repo, member_repo, service_repo),
+            cache: CacheManager::new(Self::MAX_CACHE_CAPACITY, Self::CACHE_TIME_TO_LIVE_SECS),
+        }
+    }
+
+    pub async fn check_in(
+        &self,
+        member_id: Uuid,
+        service_id: Uuid,
+        checked_in_by: Option<Uuid>,
+    ) -> Result<AttendanceResponse, AppError> {
+        // TODO: There has to be a way to reach out to service service to avoid checking the database multiple times
+        // for the same service information, for now, I will delegate
+        self.inner
+            .check_in(member_id, service_id, checked_in_by)
+            .await
+    }
+
+    pub async fn bulk_check_in(
+        &self,
+        service_id: Uuid,
+        member_ids: Vec<Uuid>,
+        checked_in_by: Option<Uuid>,
+    ) -> Result<BulkCheckInResponse, AppError> {
+        self.inner
+            .bulk_check_in(service_id, member_ids, checked_in_by)
+            .await
+    }
+
+    pub async fn get_service_attendance(
+        &self,
+        service_id: Uuid,
+        page: Option<i32>,
+        limit: Option<i32>,
+    ) -> Result<ListResponse<AttendanceWithMemberResponse>, AppError> {
+        self.inner
+            .get_service_attendance(service_id, page, limit)
+            .await
+    }
+
+    pub async fn get_member_attendance(
+        &self,
+        member_id: Uuid,
+        page: Option<i32>,
+        limit: Option<i32>,
+    ) -> Result<Vec<AttendanceResponse>, AppError> {
+        self.inner
+            .get_member_attendance(member_id, page, limit)
+            .await
+    }
+
+    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
+        let key = AttendanceResponse::cache_key_from_id(id);
+        self.cache.invalidate_cache(&key).await;
+        self.inner.delete(id).await
     }
 }

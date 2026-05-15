@@ -18,10 +18,6 @@ use crate::dto::{ListResponse, PaginationParams};
 use crate::errors::AppError;
 use crate::extractors::AppJson;
 use crate::middleware::auth::{RequireAdmin, RequireStaff};
-use crate::repositories::group_repo::GroupRepository;
-use crate::services::attendance_service::AttendanceService;
-use crate::services::import_service::ImportService;
-use crate::services::member_service::CachedMemberService;
 
 pub fn router() -> Router<AppState> {
     Router::new()

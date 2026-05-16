@@ -13,7 +13,7 @@ use cms_api::{
     routes,
     services::{
         attendance_service::CachedAttendanceService, auth_service::AuthService,
-        group_service::GroupService, household_service::HouseholdService,
+        group_service::CachedGroupService, household_service::HouseholdService,
         import_service::ImportService, member_service::CachedMemberService,
         service_service::CachedServiceService, user_service::CachedUserService,
     },
@@ -73,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             user_repo.clone(),
             refresh_token_repo.clone(),
         )))
-        .group_service(Arc::new(GroupService::new(
+        .group_service(Arc::new(CachedGroupService::new(
             group_repo.clone(),
             member_repo.clone(),
         )))

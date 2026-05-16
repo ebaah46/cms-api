@@ -3,27 +3,43 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::models::group::Group;
+use crate::{Cacheable, models::group::Group};
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct CreateGroupRequest {
-    #[validate(length(min = 1, max = 255, message = "Name must be between 1 and 255 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 255,
+        message = "Name must be between 1 and 255 characters"
+    ))]
     pub name: String,
-    #[validate(length(min = 1, max = 50, message = "Group type must be between 1 and 50 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 50,
+        message = "Group type must be between 1 and 50 characters"
+    ))]
     pub group_type: String,
     pub description: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct UpdateGroupRequest {
-    #[validate(length(min = 1, max = 255, message = "Name must be between 1 and 255 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 255,
+        message = "Name must be between 1 and 255 characters"
+    ))]
     pub name: Option<String>,
-    #[validate(length(min = 1, max = 50, message = "Group type must be between 1 and 50 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 50,
+        message = "Group type must be between 1 and 50 characters"
+    ))]
     pub group_type: Option<String>,
     pub description: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct GroupResponse {
     pub id: Uuid,
     pub name: String,
@@ -43,6 +59,19 @@ impl From<Group> for GroupResponse {
             created_at: g.created_at,
             updated_at: g.updated_at,
         }
+    }
+}
+
+impl Cacheable for GroupResponse {
+    fn cache_key(&self) -> String {
+        format!("group:{}", self.id)
+    }
+
+    fn cache_key_from_id<I>(id: I) -> String
+    where
+        I: Into<String>,
+    {
+        format!("group:{}", id.into())
     }
 }
 

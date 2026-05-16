@@ -8,26 +8,24 @@ use crate::dto::group_dto::{
     CreateGroupRequest, GroupMemberResponse, GroupQuery, GroupResponse, UpdateGroupRequest,
 };
 use crate::errors::AppError;
+use crate::{CacheManager, Cacheable};
 
 use crate::repositories::{GroupRepository, MemberRepository};
 
-pub struct GroupService {
+struct GroupService {
     group_repo: Arc<dyn GroupRepository>,
     member_repo: Arc<dyn MemberRepository>,
 }
 
 impl GroupService {
-    pub fn new(
-        group_repo: Arc<dyn GroupRepository>,
-        member_repo: Arc<dyn MemberRepository>,
-    ) -> Self {
+    fn new(group_repo: Arc<dyn GroupRepository>, member_repo: Arc<dyn MemberRepository>) -> Self {
         Self {
             group_repo,
             member_repo,
         }
     }
 
-    pub async fn create(&self, req: CreateGroupRequest) -> Result<GroupResponse, AppError> {
+    async fn create(&self, req: CreateGroupRequest) -> Result<GroupResponse, AppError> {
         let group = self
             .group_repo
             .create(&req.name, &req.group_type, req.description.as_deref())
@@ -36,7 +34,7 @@ impl GroupService {
         Ok(group.into())
     }
 
-    pub async fn find_by_id(&self, id: Uuid) -> Result<GroupResponse, AppError> {
+    async fn find_by_id(&self, id: Uuid) -> Result<GroupResponse, AppError> {
         let group = self
             .group_repo
             .find_by_id(id)
@@ -46,10 +44,7 @@ impl GroupService {
         Ok(group.into())
     }
 
-    pub async fn find_all(
-        &self,
-        query: GroupQuery,
-    ) -> Result<ListResponse<GroupResponse>, AppError> {
+    async fn find_all(&self, query: GroupQuery) -> Result<ListResponse<GroupResponse>, AppError> {
         let page = query.page.unwrap_or(1).max(1);
         let limit = query.limit.unwrap_or(20).clamp(1, 100);
         let offset = (page - 1) * limit;
@@ -77,11 +72,7 @@ impl GroupService {
         })
     }
 
-    pub async fn update(
-        &self,
-        id: Uuid,
-        req: UpdateGroupRequest,
-    ) -> Result<GroupResponse, AppError> {
+    async fn update(&self, id: Uuid, req: UpdateGroupRequest) -> Result<GroupResponse, AppError> {
         let group = self
             .group_repo
             .update(
@@ -96,14 +87,14 @@ impl GroupService {
         Ok(group.into())
     }
 
-    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
+    async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         if !self.group_repo.delete(id).await? {
             return Err(AppError::NotFound("Group not found".to_string()));
         }
         Ok(())
     }
 
-    pub async fn add_member(
+    async fn add_member(
         &self,
         group_id: Uuid,
         member_id: Uuid,
@@ -127,14 +118,14 @@ impl GroupService {
         Ok(())
     }
 
-    pub async fn remove_member(&self, group_id: Uuid, member_id: Uuid) -> Result<(), AppError> {
+    async fn remove_member(&self, group_id: Uuid, member_id: Uuid) -> Result<(), AppError> {
         if !self.group_repo.remove_member(group_id, member_id).await? {
             return Err(AppError::NotFound("Member not found in group".to_string()));
         }
         Ok(())
     }
 
-    pub async fn get_members(&self, group_id: Uuid) -> Result<Vec<GroupMemberResponse>, AppError> {
+    async fn get_members(&self, group_id: Uuid) -> Result<Vec<GroupMemberResponse>, AppError> {
         // Verify group exists
         self.group_repo
             .find_by_id(group_id)
@@ -156,7 +147,7 @@ impl GroupService {
             .collect())
     }
 
-    pub async fn get_member_groups(&self, member_id: Uuid) -> Result<Vec<GroupResponse>, AppError> {
+    async fn get_member_groups(&self, member_id: Uuid) -> Result<Vec<GroupResponse>, AppError> {
         let member_groups = self.group_repo.get_member_groups(member_id).await?;
         let gps: Vec<GroupResponse> = member_groups
             .into_iter()
@@ -166,5 +157,86 @@ impl GroupService {
             })
             .collect::<Vec<_>>();
         Ok(gps)
+    }
+}
+
+pub struct CachedGroupService {
+    inner: GroupService,
+    cache: CacheManager<GroupResponse>,
+}
+
+impl CachedGroupService {
+    const MAX_CACHE_CAPACITY: u64 = 20; // number of groups cache can store
+    const CACHE_TIME_TO_LIVE_SECS: u64 = 600; // number of secs entry can live until eviction based on strategy
+
+    pub fn new(
+        group_repo: Arc<dyn GroupRepository>,
+        member_repo: Arc<dyn MemberRepository>,
+    ) -> Self {
+        Self {
+            inner: GroupService::new(group_repo, member_repo),
+            cache: CacheManager::new(Self::MAX_CACHE_CAPACITY, Self::CACHE_TIME_TO_LIVE_SECS),
+        }
+    }
+
+    pub async fn create(&self, req: CreateGroupRequest) -> Result<GroupResponse, AppError> {
+        let group = self.inner.create(req).await?;
+        let key = GroupResponse::cache_key_from_id(group.id);
+        self.cache.set_entry(key, group.clone()).await;
+        Ok(group)
+    }
+
+    pub async fn find_by_id(&self, id: Uuid) -> Result<GroupResponse, AppError> {
+        let key = GroupResponse::cache_key_from_id(id);
+        if let Some(group) = self.cache.get_entry(&key).await {
+            return Ok(group);
+        }
+        let closure = move || self.inner.find_by_id(id);
+        self.cache.set_entry_with_method(key, closure).await
+    }
+
+    pub async fn find_all(
+        &self,
+        query: GroupQuery,
+    ) -> Result<ListResponse<GroupResponse>, AppError> {
+        self.inner.find_all(query).await
+    }
+
+    pub async fn update(
+        &self,
+        id: Uuid,
+        req: UpdateGroupRequest,
+    ) -> Result<GroupResponse, AppError> {
+        let key = GroupResponse::cache_key_from_id(id);
+        self.cache.invalidate_cache(&key).await;
+        let closure = move || self.inner.update(id, req);
+        self.cache.set_entry_with_method(key, closure).await
+    }
+
+    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
+        let key = GroupResponse::cache_key_from_id(id);
+        self.cache.invalidate_cache(&key).await;
+        self.inner.delete(id).await
+    }
+
+    pub async fn add_member(
+        &self,
+        group_id: Uuid,
+        member_id: Uuid,
+        role: Option<&str>,
+    ) -> Result<(), AppError> {
+        self.inner.add_member(group_id, member_id, role).await
+    }
+
+    pub async fn remove_member(&self, group_id: Uuid, member_id: Uuid) -> Result<(), AppError> {
+        self.inner.remove_member(group_id, member_id).await
+    }
+
+    pub async fn get_members(&self, group_id: Uuid) -> Result<Vec<GroupMemberResponse>, AppError> {
+        self.inner.get_members(group_id).await
+    }
+
+    pub async fn get_member_groups(&self, member_id: Uuid) -> Result<Vec<GroupResponse>, AppError> {
+        self.inner.get_member_groups(member_id).await
     }
 }
